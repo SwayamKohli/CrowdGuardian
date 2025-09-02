@@ -1,26 +1,49 @@
 .app-sidebar {
-    width: 200px;
-    background-color: #f4f4f4;
-    padding: 15px;
-    border-right: 1px solid #ddd;
+    width: 220px;
+    background-color: #f8f9fa;
+    padding: 20px 0;
+    border-right: 1px solid #e0e0e0;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
 }
 
 .app-sidebar ul {
     list-style: none;
     padding: 0;
+    margin: 0;
 }
 
 .app-sidebar li {
-    margin-bottom: 10px;
+    margin: 0;
 }
 
-.app-sidebar a {
+.nav-link {
+    display: block;
+    width: 100%;
+    padding: 12px 20px;
+    text-align: left;
     text-decoration: none;
-    color: #333;
-    font-weight: bold;
+    color: #495057;
+    background-color: transparent;
+    border: none;
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
 }
 
-.app-sidebar a:hover {
+.nav-link:hover {
+    background-color: #e9ecef;
     color: #007bff;
-    /* Bootstrap primary color, change as desired */
+}
+
+.nav-link.active {
+    background-color: #007bff;
+    color: white;
+    font-weight: 600;
+    border-left: 4px solid #0056b3;
+}
+
+.nav-link.active:hover {
+    background-color: #0056b3;
 }

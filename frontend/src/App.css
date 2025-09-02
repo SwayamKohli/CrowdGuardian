@@ -1,5 +1,4 @@
 #root {
-  /* Ensure the main app container takes full height */
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -8,7 +7,5 @@
 .app-container {
   display: flex;
   flex: 1;
-  /* Takes remaining space */
   overflow: hidden;
-  /* Prevents scrolling on the container itself */
 }

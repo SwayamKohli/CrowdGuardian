@@ -1,9 +1,17 @@
 .app-main-content {
     flex: 1;
-    /* Takes remaining space */
-    padding: 20px;
+    padding: 25px;
     overflow-y: auto;
-    /* Allows scrolling within the content area */
     background-color: #ffffff;
-    color: black;
+}
+
+.content-placeholder {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+}
+
+.content-placeholder h2 {
+    margin-bottom: 15px;
+    color: #495057;
 }

@@ -4,8 +4,10 @@ import './MainContent.css';
 const MainContent = () => {
     return (
         <main className="app-main-content">
-            <p>Main content area. Map, alerts, analytics will go here.</p>
-            {/* Content will be rendered based on navigation later */}
+            <div className="content-placeholder">
+                <h2>Welcome to CrowdGuardian Dashboard</h2>
+                <p>Select an option from the sidebar to view details.</p>
+            </div>
         </main>
     );
 };

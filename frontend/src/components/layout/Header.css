@@ -1,17 +1,41 @@
 .app-header {
-    background-color: #282c34;
-    padding: 20px;
+    background: linear-gradient(135deg, #282c34, #1a1c22);
     color: white;
-    text-align: center;
+    padding: 15px 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    position: relative;
 }
 
-.app-header h1 {
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 100%;
+}
+
+.header-title h1 {
     margin: 0;
-    font-size: 2em;
+    font-size: 1.8em;
+    letter-spacing: 1px;
 }
 
-.app-header p {
+.header-title p {
     margin: 5px 0 0 0;
-    font-size: 1em;
-    opacity: 0.8;
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+.header-user-info {
+    font-size: 0.9em;
+}
+
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .header-user-info {
+        margin-top: 10px;
+    }
 }
