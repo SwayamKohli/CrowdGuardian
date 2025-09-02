@@ -1,0 +1,9 @@
+.app-main-content {
+    flex: 1;
+    /* Takes remaining space */
+    padding: 20px;
+    overflow-y: auto;
+    /* Allows scrolling within the content area */
+    background-color: #ffffff;
+    color: black;
+}

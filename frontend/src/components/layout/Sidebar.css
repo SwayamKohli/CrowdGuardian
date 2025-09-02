@@ -1,0 +1,26 @@
+.app-sidebar {
+    width: 200px;
+    background-color: #f4f4f4;
+    padding: 15px;
+    border-right: 1px solid #ddd;
+}
+
+.app-sidebar ul {
+    list-style: none;
+    padding: 0;
+}
+
+.app-sidebar li {
+    margin-bottom: 10px;
+}
+
+.app-sidebar a {
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+}
+
+.app-sidebar a:hover {
+    color: #007bff;
+    /* Bootstrap primary color, change as desired */
+}
