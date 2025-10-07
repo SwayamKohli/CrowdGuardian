@@ -1,0 +1,69 @@
+.historical-analytics {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  overflow: hidden; /* Contain internal scrolling elements */
+  padding: 10px;
+  color: #333; /* Default text color for the component */
+}
+
+.historical-analytics h3 {
+  margin: 0 0 15px 0;
+  padding: 0;
+  color: #333;
+  font-size: 1.2em;
+}
+
+.analytics-controls {
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  color: #333;
+}
+
+.analytics-controls label {
+  margin-right: 10px;
+  color: #333;
+}
+
+.analytics-controls select {
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  color: #333;
+}
+
+.charts-container {
+  display: flex;
+  flex-direction: column; /* Default vertical stacking */
+  gap: 20px;
+  flex: 1; /* Utilize remaining space */
+  overflow-y: auto;
+}
+
+.chart-wrapper {
+  height: 300px; /* Standard height for chart display */
+  width: 100%;
+  padding: 10px;
+  background-color: white;
+  border-radius: 4px;
+  color: #333;
+  /* Ensure sufficient minimum width for text content */
+  min-width: 350px;
+}
+
+/* Media query for wider screens to enable side-by-side charts */
+@media (min-width: 768px) {
+  .charts-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .chart-wrapper {
+    flex: 1 1 45%; /* Allow approximately two charts per row */
+    min-width: 350px;
+  }
+}
