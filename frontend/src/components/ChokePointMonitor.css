@@ -1,0 +1,64 @@
+.choke-point-monitor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  overflow: hidden; /* Contain internal scrolling elements */
+}
+
+.choke-point-monitor h3 {
+  margin: 0;
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  font-size: 1.1em;
+}
+
+.choke-points-list {
+  flex: 1; /* Utilize remaining vertical space */
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.no-chokepoints {
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.choke-points-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  /* Set table text color for readability */
+  color: #333;
+}
+
+.choke-points-table th,
+.choke-points-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.choke-points-table th {
+  background-color: #f1f1f1;
+  font-weight: bold;
+  /* Ensure header text is dark */
+  color: #333;
+}
+
+.choke-points-table tr:hover {
+  background-color: #3effff;
+}
+
+.status-indicator {
+  padding: 2px 8px;
+  border-radius: 12px; /* Define pill shape */
+  color: white;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-align: center;
+}
