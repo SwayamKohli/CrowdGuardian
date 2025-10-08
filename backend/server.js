@@ -51,10 +51,13 @@ const createAlertsRouter = require('./routes/alerts');
 const alertsRouter = createAlertsRouter(pool);
 app.use('/api/alerts', alertsRouter);
 
-// Map incidents route file to the historical data endpoint
 const createHistoricalDataRouter = require('./routes/incidents');
 const historicalDataRouter = createHistoricalDataRouter(pool);
 app.use('/api/historical-data', historicalDataRouter);
+
+const createEvacuationRoutesRouter = require('./routes/evacuationRoutes');
+const evacuationRoutesRouter = createEvacuationRoutesRouter(pool);
+app.use('/api/evacuation-routes', evacuationRoutesRouter);
 
 // Create HTTP server instance
 const server = http.createServer(app);
