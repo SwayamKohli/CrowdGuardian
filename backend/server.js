@@ -12,7 +12,6 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'crowdguardian',
   user: process.env.DB_USER || 'cg_user',
-  // Note: Using a fallback for password is not recommended for production
   password: process.env.DB_PASSWORD || 'your_strong_app_password',
 });
 
@@ -73,6 +72,10 @@ const io = socketIo(server, {
 // Handle Socket.IO connections
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
+
+  // Emit a test event to the newly connected client
+  socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` });
+
   socket.on('disconnect', () => {
     console.log('A user disconnected:', socket.id);
   });
@@ -82,3 +85,6 @@ io.on('connection', (socket) => {
 server.listen(port, () => {
   console.log(`CrowdGuardian Backend server listening at http://localhost:${port}`);
 });
+
+// Export pool and io for use in other files
+module.exports = { pool, io };
