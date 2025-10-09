@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,8 +9,9 @@ import {
   Tooltip,
   Legend,
   BarElement,
+  ArcElement, // Component for Pie/Doughnut charts
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import './HistoricalAnalytics.css';
 
 // Register all necessary Chart.js components for rendering
@@ -19,6 +20,7 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
+  ArcElement,
   BarElement,
   Title,
   Tooltip,
@@ -26,20 +28,62 @@ ChartJS.register(
 );
 
 const HistoricalAnalytics = () => {
-  // State for time range filtering (e.g., 'day', 'week', 'month')
+  // State for time range filter, controlling API queries
   const [timeRange, setTimeRange] = useState('week');
+  // State for raw historical data fetched from the backend
+  const [historicalData, setHistoricalData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Configuration and mock data for Incidents Reported Line Chart
-  const incidentsData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [
-      {
-        label: 'Incidents Reported',
-        data: [2, 1, 3, 0, 4, 5, 2],
-        borderColor: 'rgb(255, 99, 132)',
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-      },
-    ],
+  // Effect hook to fetch historical incident data from the backend API
+  useEffect(() => {
+    const fetchHistoricalData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch historical data, adding a filter for timeRange if the backend supports it later
+        const response = await fetch('http://localhost:3000/api/historical-data?limit=50');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setHistoricalData(data);
+      } catch (err) {
+        console.error('Error fetching historical data:', err);
+        setError(err.message);
+        setHistoricalData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistoricalData();
+  }, [timeRange]); // Re-fetches data when the time range filter changes
+
+  /**
+   * Processes raw incident data to aggregate incident counts over time.
+   * @returns {Object} Chart.js data object for the Line Chart.
+   */
+  const processIncidentsOverTime = () => {
+    const incidentsOverTime = {};
+    historicalData.forEach(item => {
+      // Grouping by date (YYYY-MM-DD)
+      const date = new Date(item.reported_at).toISOString().split('T')[0];
+      incidentsOverTime[date] = (incidentsOverTime[date] || 0) + 1;
+    });
+
+    return {
+      labels: Object.keys(incidentsOverTime),
+      datasets: [
+        {
+          label: 'Incidents Reported',
+          data: Object.values(incidentsOverTime),
+          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgba(255, 99, 132, 0.5)',
+        },
+      ],
+    };
   };
 
   const incidentsOptions = {
@@ -59,60 +103,37 @@ const HistoricalAnalytics = () => {
       },
     },
   };
+  const incidentsData = processIncidentsOverTime();
 
-  // Configuration and mock data for Average Density Bar Chart
-  const densityData = {
-    labels: ['Zone A', 'Zone B', 'Zone C', 'Zone D', 'Zone E'],
-    datasets: [
-      {
-        label: 'Avg. Density (p/m²)',
-        data: [2.1, 3.5, 1.8, 4.2, 2.9],
-        backgroundColor: 'rgba(53, 162, 235, 0.5)',
-      },
-    ],
-  };
+  /**
+   * Processes raw incident data to determine the distribution of incident causes.
+   * @returns {Object} Chart.js data object for the Doughnut Chart.
+   */
+  const processRiskDistribution = () => {
+    const riskLevelCounts = {};
+    historicalData.forEach(item => {
+      const cause = item.cause || 'Unknown'; // Group by incident cause
+      riskLevelCounts[cause] = (riskLevelCounts[cause] || 0) + 1;
+    });
 
-  const densityOptions = {
-    indexAxis: 'y', // Renders as a horizontal bar chart
-    elements: {
-      bar: {
-        borderWidth: 2,
-      },
-    },
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top', // FIX: Set position to 'top' for consistency
-      },
-      title: {
-        display: true,
-        text: 'Average Density by Zone',
-      },
-    },
-  };
+    // Color array for the doughnut segments
+    const colors = [
+      'rgba(255, 99, 132, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(255, 206, 86, 0.7)',
+      'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)',
+    ];
 
-  // Configuration and mock data for Risk Level Distribution Chart
-  const riskDistributionData = {
-    labels: ['Low', 'Medium', 'High', 'Critical'],
-    datasets: [
-      {
-        label: 'Risk Level Distribution',
-        data: [15, 10, 5, 2],
-        backgroundColor: [
-          'rgba(75, 192, 192, 0.5)', // Low
-          'rgba(54, 162, 235, 0.5)', // Medium
-          'rgba(255, 206, 86, 0.5)', // High
-          'rgba(255, 99, 132, 0.5)', // Critical
-        ],
-        borderColor: [
-          'rgba(75, 192, 192, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-          'rgba(255, 99, 132, 1)',
-        ],
-        borderWidth: 1,
-      },
-    ],
+    return {
+      labels: Object.keys(riskLevelCounts),
+      datasets: [
+        {
+          label: 'Incident Cause Distribution',
+          data: Object.values(riskLevelCounts),
+          backgroundColor: Object.keys(riskLevelCounts).map((_, index) => colors[index % colors.length]),
+          borderColor: Object.keys(riskLevelCounts).map((_, index) => colors[index % colors.length].replace('0.7', '1')),
+          borderWidth: 1,
+        },
+      ],
+    };
   };
 
   const riskDistributionOptions = {
@@ -123,15 +144,74 @@ const HistoricalAnalytics = () => {
       },
       title: {
         display: true,
-        text: 'Risk Level Distribution',
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
+        text: 'Incident Cause Distribution',
       },
     },
   };
+  const riskDistributionData = processRiskDistribution();
+
+  /**
+   * Processes raw incident data to aggregate total casualties per cause.
+   * @returns {Object} Chart.js data object for the Bar Chart.
+   */
+  const processCasualtiesByCause = () => {
+    const casualtiesByCause = {};
+    historicalData.forEach(item => {
+      const cause = item.cause || 'Unknown';
+      casualtiesByCause[cause] = (casualtiesByCause[cause] || 0) + (item.casualties || 0);
+    });
+
+    return {
+      labels: Object.keys(casualtiesByCause),
+      datasets: [
+        {
+          label: 'Total Casualties',
+          data: Object.values(casualtiesByCause),
+          backgroundColor: 'rgba(53, 162, 235, 0.5)', // Blue
+        },
+      ],
+    };
+  };
+
+  const casualtiesOptions = {
+    indexAxis: 'y', // Horizontal bar chart
+    elements: {
+      bar: {
+        borderWidth: 2,
+      },
+    },
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'right',
+      },
+      title: {
+        display: true,
+        text: 'Total Casualties by Cause',
+      },
+    },
+  };
+  const casualtiesData = processCasualtiesByCause();
+
+
+  // Render loading or error state
+  if (loading) {
+    return (
+      <div className="historical-analytics">
+        <h3>Historical Analytics Dashboard</h3>
+        <p className="loading-message">Loading historical data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="historical-analytics">
+        <h3>Historical Analytics Dashboard</h3>
+        <p className="error-message">Error loading historical data: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="historical-analytics">
@@ -154,10 +234,10 @@ const HistoricalAnalytics = () => {
           <Line options={incidentsOptions} data={incidentsData} />
         </div>
         <div className="chart-wrapper">
-          <Bar options={densityOptions} data={densityData} />
+          <Doughnut options={riskDistributionOptions} data={riskDistributionData} />
         </div>
         <div className="chart-wrapper">
-          <Bar options={riskDistributionOptions} data={riskDistributionData} />
+          <Bar options={casualtiesOptions} data={casualtiesData} />
         </div>
       </div>
     </div>
