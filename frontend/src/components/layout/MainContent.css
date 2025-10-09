@@ -1,19 +1,25 @@
 .app-main-content {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-    background-color: #000000;
-    display: flex;
-    flex-direction: column;
+  flex: 1; /* Utilize remaining horizontal space */
+  padding: 20px;
+  overflow-y: auto; /* Enable vertical scrolling */
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
 }
 
-.content-placeholder {
-    text-align: center;
-    padding: 40px 20px;
-    color: #6c757d;
+/* Styles for the dashboard placeholder view */
+.dashboard-placeholder {
+  text-align: center;
+  padding: 40px 20px;
+  color: #6c757d;
+  flex: 1; /* Ensure placeholder fills the available height */
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Center content vertically */
+  align-items: center; /* Center content horizontally */
 }
 
-.content-placeholder h2 {
-    margin-bottom: 15px;
-    color: #495057;
+.dashboard-placeholder h2 {
+  margin-bottom: 15px;
+  color: #495057;
 }
