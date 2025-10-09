@@ -1,25 +1,88 @@
+/* Existing styles for other components */
 .app-main-content {
-  flex: 1; /* Utilize remaining horizontal space */
+  flex: 1;
   padding: 20px;
-  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-y: auto;
   background-color: #ffffff;
   display: flex;
   flex-direction: column;
 }
 
-/* Styles for the dashboard placeholder view */
-.dashboard-placeholder {
-  text-align: center;
-  padding: 40px 20px;
-  color: #6c757d;
-  flex: 1; /* Ensure placeholder fills the available height */
+/* --- New Styles for Dashboard View --- */
+.dashboard-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center; /* Center content vertically */
-  align-items: center; /* Center content horizontally */
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 20px;
+  background-color: #f8f9fa;
+  color: #333;
+  overflow-y: auto;
 }
 
-.dashboard-placeholder h2 {
-  margin-bottom: 15px;
-  color: #495057;
+.dashboard-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.dashboard-header h1 {
+  margin: 0 0 10px 0;
+  font-size: 2.5em;
+  letter-spacing: 1px;
+}
+
+.dashboard-header p {
+  margin: 0;
+  font-size: 1.2em;
+  opacity: 0.9;
+}
+
+.dashboard-content {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.dashboard-intro,
+.dashboard-features,
+.dashboard-call-to-action {
+  background-color: white;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.dashboard-intro h2,
+.dashboard-features h2,
+.dashboard-call-to-action h2 {
+  color: #007bff;
+  margin-top: 0;
+  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 10px;
+}
+
+.dashboard-intro p,
+.dashboard-features ul,
+.dashboard-call-to-action ul {
+  font-size: 1em;
+  line-height: 1.6;
+}
+
+.dashboard-features ul,
+.dashboard-call-to-action ul {
+  padding-left: 20px;
+}
+
+.dashboard-features li,
+.dashboard-call-to-action li {
+  margin-bottom: 10px;
 }

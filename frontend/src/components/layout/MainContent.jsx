@@ -1,20 +1,16 @@
 import React from 'react';
 import './MainContent.css';
+// Import the components to be rendered based on navigation
 import MapView from '../../components/MapView';
 import AlertsPanel from '../../components/AlertsPanel';
 import ChokePointMonitor from '../../components/ChokePointMonitor';
 import HistoricalAnalytics from '../../components/HistoricalAnalytics';
+// import EvacuationPlanner from '../../components/EvacuationPlanner'; // Import when created
 
-/**
- * Main application content wrapper responsible for rendering the active component
- * based on the current view state controlled by the sidebar.
- *
- * @param {object} props - The component props.
- * @param {string} props.activeView - Identifier for the currently active view (e.g., 'map', 'analytics').
- */
+// Accept activeView as a prop
 const MainContent = ({ activeView }) => {
-  
-  // Function to determine which primary component to render
+
+  // Function to render the correct component based on activeView
   const renderActiveComponent = () => {
     switch (activeView) {
       case 'map':
@@ -25,15 +21,48 @@ const MainContent = ({ activeView }) => {
         return <ChokePointMonitor />;
       case 'analytics':
         return <HistoricalAnalytics />;
-      // case 'evacuation': // Placeholder for EvacuationPlanner component
+      // case 'evacuation': // Add case when EvacuationPlanner is ready
       //   return <EvacuationPlanner />;
-      case 'dashboard':
+      case 'dashboard': // Specific dashboard view
       default:
         return (
-          <div className="dashboard-placeholder">
-            <h2>Welcome to CrowdGuardian Dashboard</h2>
-            <p>Select an option from the sidebar to view details.</p>
-            {/* Placeholder for quick stats or summary cards */}
+          <div className="dashboard-container">
+            <div className="dashboard-header">
+              <h1>Welcome to CrowdGuardian</h1>
+              <p className="dashboard-subtitle">Real-Time Stampede Risk Prediction & Safety System</p>
+            </div>
+            <div className="dashboard-content">
+              <div className="dashboard-intro">
+                <h2>About CrowdGuardian</h2>
+                <p>
+                  CrowdGuardian is an intelligent platform designed to prevent stampede incidents by leveraging real-time crowd monitoring, advanced algorithms, and predictive analytics.
+                </p>
+                <p>
+                  Our system continuously analyzes crowd density, flow patterns, and choke point pressures to predict potential risks before they escalate. It provides dynamic evacuation planning and coordinated emergency response tools to ensure public safety at mass gatherings.
+                </p>
+              </div>
+              <div className="dashboard-features">
+                <h2>Key Features</h2>
+                <ul>
+                  <li><strong>Real-Time Crowd Density Monitoring:</strong> Visualize crowd distribution and identify high-density areas.</li>
+                  <li><strong>Intelligent Risk Prediction:</strong> Predict stampede risks using advanced algorithms.</li>
+                  <li><strong>Dynamic Evacuation Planning:</strong> Calculate and display optimal evacuation routes.</li>
+                  <li><strong>Choke Point Management:</strong> Monitor and manage critical areas prone to bottlenecks.</li>
+                  <li><strong>Historical Analytics:</strong> Analyze past incidents and trends for improved safety strategies.</li>
+                  <li><strong>Multi-Channel Alerts:</strong> Trigger automated warnings via various communication channels.</li>
+                </ul>
+              </div>
+              <div className="dashboard-call-to-action">
+                <h2>Get Started</h2>
+                <p>Explore the system using the navigation menu on the left.</p>
+                <ul>
+                  <li>View the <strong>Crowd Map</strong> for real-time density visualization.</li>
+                  <li>Check the <strong>Alerts Panel</strong> for current warnings.</li>
+                  <li>Monitor <strong>Choke Points</strong> for utilization status.</li>
+                  <li>Analyze <strong>Historical Data</strong> for trends.</li>
+                </ul>
+              </div>
+            </div>
           </div>
         );
     }
@@ -41,6 +70,7 @@ const MainContent = ({ activeView }) => {
 
   return (
     <main className="app-main-content">
+      {/* Render the component based on activeView */}
       {renderActiveComponent()}
     </main>
   );
