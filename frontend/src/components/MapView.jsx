@@ -1,9 +1,8 @@
-// frontend/src/components/MapView.jsx
-import React, { useState, useEffect, useRef } from 'react'; // Import useRef
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './MapView.css';
-import { io } from 'socket.io-client'; // Import socket.io-client
+import { io } from 'socket.io-client';
 
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -24,7 +23,6 @@ const MapView = () => {
 
   // State for data from API and simulation
   const [chokePoints, setChokePoints] = useState([]);
-  // State for zone metrics (simulated for now)
   const [zoneMetrics, setZoneMetrics] = useState([
     { id: 'Z1', zoneId: 'Z1', location: [28.6145, 77.2085], density: 2.5, avgSpeed: 0.9, flowDirection: 90 },
     { id: 'Z2', zoneId: 'Z2', location: [28.6135, 77.2095], density: 4.0, avgSpeed: 0.7, flowDirection: 180 },
@@ -36,13 +34,16 @@ const MapView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // State for real-time messages from Socket.IO (for testing visibility)
+  // State for real-time Socket.IO messages (for testing visibility)
   const [socketMessages, setSocketMessages] = useState([]);
 
-  // Ref to hold the socket instance (prevents re-creating socket on every render due to state updates)
+  // State for real-time risk alerts received via Socket.IO
+  const [riskAlerts, setRiskAlerts] = useState([]);
+
+  // Ref to hold the socket instance across renders
   const socketRef = useRef(null);
 
-  // Effect hook to simulate updates to zone density (temporary)
+  // Effect hook to simulate periodic updates to zone density (temporary for visualization)
   useEffect(() => {
     const interval = setInterval(() => {
       setZoneMetrics(prevMetrics =>
@@ -53,8 +54,6 @@ const MapView = () => {
         }))
       );
     }, 3000);
-    
-    // Cleanup interval on component unmount
     return () => clearInterval(interval);
   }, []);
 
@@ -81,92 +80,118 @@ const MapView = () => {
     fetchChokePoints();
   }, []);
 
-  // Effect hook for Socket.IO Client Setup (Corrected)
+  // Effect hook for Socket.IO Client Setup and Listener Definitions
   useEffect(() => {
-    console.log("MapView: Effect for Socket.IO setup running.");
-
-    // Only create the socket if it doesn't already exist in the ref
     if (!socketRef.current) {
-      console.log("MapView: Creating new Socket.IO client...");
       const newSocket = io('http://localhost:3000');
-
-      // Store the socket instance in the ref
       socketRef.current = newSocket;
 
-      // --- Define Listeners ---
-      // Listener for the 'server_hello' event (testing)
+      // Define Listeners
       const handleHello = (data) => {
-        console.log('MapView: Received server hello:', data);
         setSocketMessages(prev => [...prev, { type: 'hello', ...data, timestamp: new Date().toLocaleTimeString() }]);
       };
 
-      // Listener for the 'server_time_update' event (testing)
       const handleTimeUpdate = (data) => {
-        console.log('MapView: Received server time update:', data);
         setSocketMessages(prev => [...prev, { type: 'time_update', ...data, timestamp: new Date().toLocaleTimeString() }]);
       };
 
-      // Attach the listeners to the new socket instance
+      const handleRiskAlert = (data) => {
+        // Add the received alert to the state for rendering the risk zone
+        setRiskAlerts(prevAlerts => {
+          const maxAlerts = 10;
+          let updatedAlerts = [...prevAlerts, data];
+          if (updatedAlerts.length > maxAlerts) {
+            updatedAlerts = updatedAlerts.slice(-maxAlerts);
+          }
+          return updatedAlerts;
+        });
+        setSocketMessages(prev => [...prev, { type: 'risk_alert', ...data, timestamp: new Date().toLocaleTimeString() }]);
+      };
+
+      // Attach the listeners
       newSocket.on('server_hello', handleHello);
       newSocket.on('server_time_update', handleTimeUpdate);
+      newSocket.on('risk_alert_generated', handleRiskAlert);
 
-      // Store listener functions in the ref for cleanup (important!)
+      // Store listener functions in the ref for cleanup
       socketRef.current.handleHello = handleHello;
       socketRef.current.handleTimeUpdate = handleTimeUpdate;
+      socketRef.current.handleRiskAlert = handleRiskAlert;
 
-      // Log connection
       newSocket.on('connect', () => {
           console.log('MapView: Socket.IO client connected successfully.');
       });
-
-      // Log disconnection (optional)
-      newSocket.on('disconnect', (reason) => {
-          console.log('MapView: Socket.IO client disconnected:', reason);
-      });
-    } else {
-        console.log("MapView: Socket.IO client already exists in ref, not creating a new one.");
     }
 
-    // Cleanup function: close the socket connection and remove listeners when the component unmounts
     return () => {
-      console.log("MapView: Cleanup function running. Closing socket if it exists.");
       if (socketRef.current) {
-        // Remove the specific listeners we attached
-        if (socketRef.current.handleHello) {
-          socketRef.current.off('server_hello', socketRef.current.handleHello);
-        }
-        if (socketRef.current.handleTimeUpdate) {
-          socketRef.current.off('server_time_update', socketRef.current.handleTimeUpdate);
-        }
-        // Close the socket connection
+        // Clean up all event listeners and close the socket connection
+        socketRef.current.off('server_hello', socketRef.current.handleHello);
+        socketRef.current.off('server_time_update', socketRef.current.handleTimeUpdate);
+        socketRef.current.off('risk_alert_generated', socketRef.current.handleRiskAlert);
         socketRef.current.close();
-        // Clear the ref
         socketRef.current = null;
       }
     };
-  }, []); // Empty dependency array ensures this runs only once on mount and once on unmount
+  }, []);
 
   // Function to determine marker color based on utilization
   const getMarkerColor = (utilization, capacity) => {
     const util = utilization || 0;
     const cap = capacity || 100;
     const percentage = (util / cap) * 100;
-    if (percentage > 80) return '#dc3545'; // Red (High Risk)
-    if (percentage > 60) return '#ffc107'; // Yellow (Medium Risk)
-    return '#28a745'; // Green (Low Risk)
+    if (percentage > 80) return '#dc3545';
+    if (percentage > 60) return '#ffc107';
+    return '#28a745';
   };
 
   // Function to determine circle color based on density
   const getDensityColor = (density) => {
-    if (density > 3.5) return '#dc3545'; // Red
-    if (density > 2.5) return '#ffc107'; // Yellow
-    if (density > 1.5) return '#28a745'; // Green
-    return '#17a2b8'; // Blue
+    if (density > 3.5) return '#dc3545';
+    if (density > 2.5) return '#ffc107';
+    if (density > 1.5) return '#28a745';
+    return '#17a2b8';
   };
 
   // Function to determine circle radius based on density
   const getCircleRadius = (density) => {
     return 50 + (density * 20);
+  };
+
+  // Function to determine risk zone color based on risk level
+  const getRiskZoneColor = (riskLevel) => {
+    switch (riskLevel?.toLowerCase()) {
+      case 'critical':
+        return '#8B0000';
+      case 'high':
+        return '#dc3545';
+      case 'medium':
+        return '#ffc107';
+      case 'low':
+        return '#28a745';
+      default:
+        return '#6c757d';
+    }
+  };
+
+  /**
+   * Generates a placeholder polygon area (square) around a center point for visualization.
+   * @param {string} zoneId - ID of the zone.
+   * @param {Array<number>} location - [lat, lng] coordinates of the zone center.
+   * @returns {Array<Array<number>> | null} Polygon coordinates.
+   */
+  const getZoneArea = (zoneId, location) => {
+    const offset = 0.0005;
+    if (location && Array.isArray(location) && location.length === 2) {
+      const [lat, lng] = location;
+      return [
+        [lat - offset, lng - offset],
+        [lat - offset, lng + offset],
+        [lat + offset, lng + offset],
+        [lat + offset, lng - offset]
+      ];
+    }
+    return null;
   };
 
   // Render loading or error state
@@ -185,11 +210,16 @@ const MapView = () => {
       <div className="socket-messages">
         <h4>Real-Time Messages:</h4>
         <ul>
-          {socketMessages.map((msg, index) => (
+          {riskAlerts.map((alert, index) => (
             <li key={index}>
-              <strong>[{msg.timestamp}] {msg.type}:</strong> {msg.message}
+              <strong>[{new Date(alert.timestamp).toLocaleTimeString()}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
             </li>
           ))}
+          {socketMessages.length > 0 && (
+            <li key="hello-status">
+              <strong>[{socketMessages[0].timestamp}] Hello:</strong> {socketMessages[0].message}
+            </li>
+          )}
         </ul>
       </div>
       <MapContainer center={center} zoom={zoom} className="leaflet-map">
@@ -197,6 +227,35 @@ const MapView = () => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        {/* Render risk zones as Polygons based on received alerts */}
+        {riskAlerts.map((alert, index) => {
+          // Find the corresponding location for the zone_id in zoneMetrics (simulated data)
+          const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
+          const location = zoneMetric ? zoneMetric.location : null;
+          const areaCoords = getZoneArea(alert.zone_id, location);
+
+          if (areaCoords) {
+            return (
+              <Polygon
+                key={`risk-${alert.zone_id}-${index}`}
+                positions={areaCoords}
+                color={getRiskZoneColor(alert.predicted_risk_level)}
+                fillColor={getRiskZoneColor(alert.predicted_risk_level)}
+                fillOpacity={0.3}
+                weight={2}
+              >
+                <Popup>
+                  <div>
+                    <strong>Risk Alert: {alert.predicted_risk_level}</strong><br />
+                    Zone: {alert.zone_id}<br />
+                    Predicted at: {new Date(alert.timestamp).toLocaleString()}
+                  </div>
+                </Popup>
+              </Polygon>
+            );
+          }
+          return null;
+        })}
         {/* Render circles for each zone based on simulated density */}
         {zoneMetrics.map((metric) => (
           <Circle
@@ -224,6 +283,7 @@ const MapView = () => {
             position={point.location}
             icon={L.divIcon({
               className: 'custom-marker',
+              // Use assumed column names for color calculation
               html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
               iconSize: [16, 16],
               iconAnchor: [8, 8],
