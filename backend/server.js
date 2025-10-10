@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
+const { spawn } = require('child_process');
 require('dotenv').config();
 
 const { Pool } = require('pg');
@@ -58,16 +59,102 @@ const createEvacuationRoutesRouter = require('./routes/evacuationRoutes');
 const evacuationRoutesRouter = createEvacuationRoutesRouter(pool);
 app.use('/api/evacuation-routes', evacuationRoutesRouter);
 
-// Create HTTP server instance
-const server = http.createServer(app);
+// ----------------------------------------------------------------------
+// ML MODEL AND ALGORITHM ROUTES
+// ----------------------------------------------------------------------
 
-// Setup WebSocket server (Socket.IO) and configure CORS for the frontend
+/**
+ * POST /api/predict-risk: Executes the ML model via a Python subprocess.
+ * Input: JSON features (crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day).
+ * Output: Predicted risk level (e.g., 'Low', 'High').
+ */
+app.post('/api/predict-risk', async (req, res) => {
+  const { crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day } = req.body;
+
+  // Validate required input
+  if (crowd_density === undefined || avg_flow_speed === undefined || 
+      rate_of_change_density === undefined || hour_of_day === undefined) {
+    return res.status(400).json({ error: 'Missing required ML features.' });
+  }
+
+  // Prepare the input data object for the Python script
+  const inputData = {
+    crowd_density: parseFloat(crowd_density),
+    avg_flow_speed: parseFloat(avg_flow_speed),
+    rate_of_change_density: parseFloat(rate_of_change_density),
+    hour_of_day: parseInt(hour_of_day),
+  };
+
+  const pythonScriptPath = './python_scripts/predict_risk.py';
+  const inputJsonString = JSON.stringify(inputData);
+
+  // Spawn the Python process, passing input data as a command-line argument
+  const pythonProcess = spawn('python', [pythonScriptPath, inputJsonString]);
+
+  let outputData = '';
+  let errorData = '';
+
+  // Capture prediction result from stdout
+  pythonProcess.stdout.on('data', (data) => {
+    outputData += data.toString();
+  });
+
+  // Capture errors from stderr
+  pythonProcess.stderr.on('data', (data) => {
+    errorData += data.toString();
+  });
+
+  // Handle process closure
+  pythonProcess.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`Python script exited with code ${code}. Error: ${errorData}`);
+      return res.status(500).json({ error: `Python script error: ${errorData || 'Unknown error'}` });
+    }
+
+    const predictionResult = outputData.trim();
+
+    // Validate and send the result
+    if (!['Low', 'Medium', 'High', 'Critical'].includes(predictionResult)) {
+        console.error(`Python script returned unexpected result: ${predictionResult}`);
+        return res.status(500).json({ error: `Python script returned unexpected result: ${predictionResult}` });
+    }
+
+    res.json({ predicted_risk_level: predictionResult, input_used: inputData });
+  });
+
+  // Handle errors (e.g., Python not found)
+  pythonProcess.on('error', (err) => {
+    console.error('Failed to start Python process:', err);
+    res.status(500).json({ error: 'Failed to start ML prediction process' });
+  });
+});
+
+/**
+ * POST /api/calculate-evacuation-route: Placeholder for running the ADA algorithm.
+ * This route will eventually execute a Python script or service dedicated to route planning.
+ */
+app.post('/api/calculate-evacuation-route', (req, res) => {
+  console.log("Received request to calculate evacuation route.");
+  // Response indicates implementation is pending
+  res.status(501).json({ error: 'Evacuation route calculation is not yet implemented (requires ADA algorithm).' });
+});
+
+// ----------------------------------------------------------------------
+// SERVER & SOCKET SETUP
+// ----------------------------------------------------------------------
+
+const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: "http://localhost:5173",
     methods: ["GET", "POST"]
   }
 });
+
+// --- Socket.IO Test Logic (Temporary) ---
+const testInterval = setInterval(() => {
+  io.emit('server_time_update', { serverTime: new Date().toISOString(), message: 'This is a periodic update from the server.' });
+}, 10000);
 
 // Handle Socket.IO connections
 io.on('connection', (socket) => {
