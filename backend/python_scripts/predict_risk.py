@@ -61,8 +61,8 @@ def predict_risk(model, scaler, input_data):
 
 if __name__ == "__main__":
     # Define paths to the saved ML assets
-    model_path = '../models/stampede_model.pkl'
-    scaler_path = '../models/scaler.pkl'
+    model_path = './models/stampede_model.pkl'
+    scaler_path = './models/scaler.pkl'
 
     # Load the model and scaler objects
     model, scaler = load_model_and_scaler(model_path, scaler_path)
