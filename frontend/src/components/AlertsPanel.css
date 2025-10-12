@@ -1,100 +1,418 @@
+/* Alerts Panel - Emergency Broadcast System Theme */
 .alerts-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background-color: #f9f9f9;
+  border: 2px solid rgba(255, 193, 7, 0.3);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
   overflow: hidden;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 193, 7, 0.1);
+  position: relative;
 }
 
+/* Alert broadcast pattern background */
+.alerts-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 193, 7, 0.02) 2px,
+      rgba(255, 193, 7, 0.02) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Panel Header - Emergency Broadcast Style */
 .alerts-panel h3 {
   margin: 0;
-  padding: 10px 15px;
-  background-color: #007bff;
-  color: white;
-  font-size: 1.1em;
+  padding: 20px 25px;
+  background: linear-gradient(90deg, rgba(255, 107, 53, 0.25) 0%, rgba(255, 193, 7, 0.15) 100%);
+  color: #ffc107;
+  font-size: 1.4em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-bottom: 2px solid rgba(255, 193, 7, 0.3);
+  text-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 1;
 }
 
+.alerts-panel h3::before {
+  content: '🔔';
+  margin-right: 12px;
+  font-size: 1.2em;
+  animation: ringBell 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 193, 7, 0.6));
+}
+
+@keyframes ringBell {
+  0%, 90%, 100% { transform: rotate(0deg); }
+  92% { transform: rotate(-15deg); }
+  94% { transform: rotate(15deg); }
+  96% { transform: rotate(-15deg); }
+  98% { transform: rotate(15deg); }
+}
+
+/* Alerts List Container */
 .alerts-list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 20px;
+  position: relative;
+  z-index: 1;
 }
 
+/* Loading and Error Messages */
+.loading-message,
+.error-message {
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 1.1em;
+  padding: 40px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.loading-message::before {
+  content: '⏳';
+  display: block;
+  font-size: 3em;
+  margin-bottom: 15px;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  color: #ff6b35;
+  font-weight: 600;
+}
+
+.error-message::before {
+  content: '⚠️';
+  display: block;
+  font-size: 3em;
+  margin-bottom: 15px;
+  animation: errorPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+/* No Alerts Message */
 .no-alerts {
   text-align: center;
-  color: #6c757d;
-  font-style: italic;
+  color: #00e676;
+  font-style: normal;
+  font-size: 1.1em;
+  padding: 40px 20px;
+  font-weight: 500;
 }
 
+.no-alerts::before {
+  content: '✓';
+  display: block;
+  font-size: 4em;
+  margin-bottom: 15px;
+  color: #00e676;
+  text-shadow: 0 0 20px rgba(0, 230, 118, 0.6);
+  animation: checkPulse 2s ease-in-out infinite;
+}
+
+@keyframes checkPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* Alert Item Base - Emergency Card Style */
 .alert-item {
-  padding: 10px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  border-left: 4px solid #ccc;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border-left: 5px solid #ccc;
+  background: rgba(26, 32, 51, 0.6);
+  backdrop-filter: blur(5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  animation: alertSlideIn 0.4s ease-out;
 }
 
+@keyframes alertSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.alert-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  background: inherit;
+  filter: brightness(1.5);
+  animation: alertGlow 2s ease-in-out infinite;
+}
+
+@keyframes alertGlow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.alert-item:hover {
+  transform: translateX(6px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Critical Alert - Maximum Urgency */
 .alert-item.critical {
-  background-color: #f8d7da;
+  background: linear-gradient(135deg, rgba(139, 0, 0, 0.3) 0%, rgba(220, 53, 69, 0.2) 100%);
   border-left-color: #dc3545;
-  color: #721c24;
+  color: #ffcdd2;
+  animation: criticalPulse 1.5s ease-in-out infinite, alertSlideIn 0.4s ease-out;
 }
 
+@keyframes criticalPulse {
+  0%, 100% { 
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+  }
+  50% { 
+    box-shadow: 0 4px 20px rgba(220, 53, 69, 0.6);
+  }
+}
+
+.alert-item.critical:hover {
+  box-shadow: 0 6px 24px rgba(220, 53, 69, 0.5);
+}
+
+/* High Alert - High Priority */
 .alert-item.high {
-  background-color: #fff3cd;
-  border-left-color: #ffc107;
-  color: #856404;
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25) 0%, rgba(255, 193, 7, 0.15) 100%);
+  border-left-color: #ff6b35;
+  color: #ffe4b5;
 }
 
+.alert-item.high:hover {
+  box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+/* Medium Alert - Moderate Priority */
 .alert-item.medium {
-  background-color: #d1ecf1;
-  border-left-color: #17a2b8;
-  color: #0c5460;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
+  border-left-color: #ffc107;
+  color: #fff9c4;
 }
 
+.alert-item.medium:hover {
+  box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
+}
+
+/* Low Alert - Informational */
 .alert-item.low {
-  background-color: #d4edda;
-  border-left-color: #28a745;
-  color: #155724;
+  background: linear-gradient(135deg, rgba(0, 230, 118, 0.2) 0%, rgba(0, 230, 118, 0.1) 100%);
+  border-left-color: #00e676;
+  color: #c8e6c9;
 }
 
+.alert-item.low:hover {
+  box-shadow: 0 6px 20px rgba(0, 230, 118, 0.4);
+}
+
+/* Info Alert - General Information */
 .alert-item.info {
-  background-color: #cce5ff;
-  border-left-color: #007bff;
-  color: #004085;
+  background: linear-gradient(135deg, rgba(41, 128, 185, 0.2) 0%, rgba(52, 152, 219, 0.1) 100%);
+  border-left-color: #3498db;
+  color: #bbdefb;
 }
 
+.alert-item.info:hover {
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+/* Alert Header - Status Bar */
 .alert-header {
   display: flex;
   justify-content: space-between;
-  font-weight: bold;
-  margin-bottom: 5px;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: 10px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
+/* Alert Type Label */
 .alert-type {
-  font-size: 0.9em;
+  font-size: 1em;
+  letter-spacing: 0.5px;
+  flex: 1;
+  min-width: 120px;
 }
 
+.alert-item.critical .alert-type { color: #ff6b6b; }
+.alert-item.high .alert-type { color: #ffa726; }
+.alert-item.medium .alert-type { color: #ffd54f; }
+.alert-item.low .alert-type { color: #69f0ae; }
+.alert-item.info .alert-type { color: #64b5f6; }
+
+/* Alert Severity Badge */
 .alert-severity {
-  font-size: 0.85em;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background-color: #6c757d;
+  font-size: 0.75em;
+  padding: 5px 12px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 1px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.alert-item.critical .alert-severity { 
+  background: linear-gradient(135deg, #dc3545, #a71d2a);
+  color: white;
+  animation: badgePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.alert-item.high .alert-severity { 
+  background: linear-gradient(135deg, #ff6b35, #ff8c42);
   color: white;
 }
 
-.alert-item.critical .alert-severity { background-color: #dc3545; }
-.alert-item.high .alert-severity { background-color: #ffc107; color: #000; }
-.alert-item.medium .alert-severity { background-color: #17a2b8; }
-.alert-item.low .alert-severity { background-color: #28a745; }
-.alert-item.info .alert-severity { background-color: #007bff; }
-
-.alert-time {
-  font-size: 0.8em;
-  color: #6c757d;
+.alert-item.medium .alert-severity { 
+  background: linear-gradient(135deg, #ffc107, #ffb300);
+  color: #000;
 }
 
+.alert-item.low .alert-severity { 
+  background: linear-gradient(135deg, #00e676, #00c853);
+  color: white;
+}
+
+.alert-item.info .alert-severity { 
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+}
+
+/* Alert Time Stamp */
+.alert-time {
+  font-size: 0.85em;
+  opacity: 0.8;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.alert-item.critical .alert-time { color: #ffcdd2; }
+.alert-item.high .alert-time { color: #ffe0b2; }
+.alert-item.medium .alert-time { color: #fff9c4; }
+.alert-item.low .alert-time { color: #c8e6c9; }
+.alert-item.info .alert-time { color: #bbdefb; }
+
+/* Alert Message Body */
 .alert-message {
-  font-size: 0.95em;
+  font-size: 1em;
+  line-height: 1.6;
+  padding: 8px 0;
+  font-weight: 400;
+}
+
+/* Resolved Alert Indicator */
+.alert-resolved {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 230, 118, 0.15);
+  border-left: 3px solid #00e676;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #69f0ae;
+  font-weight: 500;
+}
+
+.alert-resolved::before {
+  content: '✓ ';
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+/* Custom Scrollbar */
+.alerts-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.alerts-list::-webkit-scrollbar-track {
+  background: rgba(26, 32, 51, 0.5);
+  border-radius: 5px;
+  margin: 10px 0;
+}
+
+.alerts-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ff6b35, #ffc107, #00e676);
+  border-radius: 5px;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+}
+
+.alerts-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #ff8555, #ffd54f, #69f0ae);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .alerts-panel h3 {
+    padding: 15px 20px;
+    font-size: 1.2em;
+    letter-spacing: 1px;
+  }
+
+  .alerts-list {
+    padding: 15px;
+  }
+
+  .alert-item {
+    padding: 14px 16px;
+  }
+
+  .alert-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .alert-type {
+    min-width: 100%;
+  }
+
+  .alert-severity {
+    font-size: 0.7em;
+    padding: 4px 10px;
+  }
 }
