@@ -18,16 +18,18 @@ L.Icon.Default.mergeOptions({
 });
 
 const MapView = () => {
-  const center = [28.6139, 77.2090];
-  const zoom = 13;
+  // Map initialization parameters, centered around the new South Delhi zones
+  const center = [28.54, 77.15];
+  const zoom = 14;
 
   // State for data from API and simulation
   const [chokePoints, setChokePoints] = useState([]);
+  // UPDATED: Simulated zone metrics with new, better-spaced coordinates
   const [zoneMetrics, setZoneMetrics] = useState([
-    { id: 'Z1', zoneId: 'Z1', location: [28.6145, 77.2085], density: 2.5, avgSpeed: 0.9, flowDirection: 90 },
-    { id: 'Z2', zoneId: 'Z2', location: [28.6135, 77.2095], density: 4.0, avgSpeed: 0.7, flowDirection: 180 },
-    { id: 'Z3', zoneId: 'Z3', location: [28.6142, 77.2092], density: 1.8, avgSpeed: 1.2, flowDirection: 0 },
-    { id: 'Z4', zoneId: 'Z4', location: [28.6148, 77.2098], density: 3.2, avgSpeed: 0.8, flowDirection: 270 },
+    { id: 'Z1_sim', zoneId: 'Z1', location: [28.5535, 77.1585], density: 2.5, avgSpeed: 0.9, flowDirection: 90, description: 'Simulated Z1 (Hauz Khas)' },
+    { id: 'Z2_sim', zoneId: 'Z2', location: [28.5520, 77.1620], density: 4.0, avgSpeed: 0.7, flowDirection: 180, description: 'Simulated Z2 (Siri Fort)' },
+    { id: 'Z3_sim', zoneId: 'Z3', location: [28.5285, 77.1372], density: 1.8, avgSpeed: 1.2, flowDirection: 0, description: 'Simulated Z3 (Qutub Minar)' },
+    { id: 'Z4_sim', zoneId: 'Z4', location: [28.5355, 77.1450], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Simulated Z4 (Select Citywalk)' },
   ]);
 
   // State for loading/error
@@ -148,9 +150,9 @@ const MapView = () => {
     const util = utilization || 0;
     const cap = capacity || 100;
     const percentage = (util / cap) * 100;
-    if (percentage > 80) return '#dc3545'; // High Risk
-    if (percentage > 60) return '#ffc107'; // Medium Risk
-    return '#28a745'; // Low Risk
+    if (percentage > 80) return '#dc3545';
+    if (percentage > 60) return '#ffc107';
+    return '#28a745';
   };
 
   // Function to determine circle color based on density
@@ -186,11 +188,11 @@ const MapView = () => {
   const getEvacuationRouteColor = (riskLevelThatTriggered) => {
     switch (riskLevelThatTriggered?.toLowerCase()) {
       case 'critical':
-        return '#FF4500'; // OrangeRed
+        return '#FF4500';
       case 'high':
-        return '#FF8C00'; // DarkOrange
+        return '#FF8C00';
       default:
-        return '#0000FF'; // Blue default
+        return '#0000FF';
     }
   };
 
@@ -201,7 +203,8 @@ const MapView = () => {
    * @returns {Array<Array<number>> | null} Polygon coordinates.
    */
   const getZoneArea = (zoneId, location) => {
-    const offset = 0.0005;
+    // UPDATED: Use larger offset for better visibility
+    const offset = 0.001; 
     if (location && Array.isArray(location) && location.length === 2) {
       const [lat, lng] = location;
       return [

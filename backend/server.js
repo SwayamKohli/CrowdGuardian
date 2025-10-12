@@ -357,8 +357,8 @@ const io = socketIo(server, {
   }
 });
 
-// Schedule Automatic Risk Prediction to run every 30 seconds
-const predictionInterval = setInterval(runAutomaticRiskPrediction, 30000);
+// Schedule Automatic Risk Prediction to run every 10 seconds
+const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
 
 // Handle Socket.IO connections
 io.on('connection', (socket) => {
