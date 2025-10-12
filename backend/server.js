@@ -4,10 +4,8 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const { spawn } = require('child_process');
 require('dotenv').config();
-
 const { Pool } = require('pg');
 
-// Initialize PostgreSQL connection pool using environment variables
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
@@ -16,7 +14,6 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'your_strong_app_password',
 });
 
-// Verify database connection upon startup
 pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Database connection error:', err.stack);
@@ -29,120 +26,138 @@ pool.query('SELECT NOW()', (err, res) => {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configure middleware
 app.use(cors());
 app.use(express.json());
 
-// Base API route for health check
 app.get('/', (req, res) => {
   res.send('CrowdGuardian Backend API is running!');
 });
 
-// Setup API routers and inject the database pool
+// Routers
 const createChokePointsRouter = require('./routes/chokePoints');
-const chokePointsRouter = createChokePointsRouter(pool);
-app.use('/api/choke-points', chokePointsRouter);
+app.use('/api/choke-points', createChokePointsRouter(pool));
 
 const createZoneMetricsRouter = require('./routes/zoneMetrics');
-const zoneMetricsRouter = createZoneMetricsRouter(pool);
-app.use('/api/zone-metrics', zoneMetricsRouter);
+app.use('/api/zone-metrics', createZoneMetricsRouter(pool));
 
 const createAlertsRouter = require('./routes/alerts');
-const alertsRouter = createAlertsRouter(pool);
-app.use('/api/alerts', alertsRouter);
+app.use('/api/alerts', createAlertsRouter(pool));
 
 const createHistoricalDataRouter = require('./routes/incidents');
-const historicalDataRouter = createHistoricalDataRouter(pool);
-app.use('/api/historical-data', historicalDataRouter);
+app.use('/api/historical-data', createHistoricalDataRouter(pool));
 
 const createEvacuationRoutesRouter = require('./routes/evacuationRoutes');
-const evacuationRoutesRouter = createEvacuationRoutesRouter(pool);
-app.use('/api/evacuation-routes', evacuationRoutesRouter);
+app.use('/api/evacuation-routes', createEvacuationRoutesRouter(pool));
 
-// ----------------------------------------------------------------------
-// ML MODEL AND ALGORITHM ROUTES
-// ----------------------------------------------------------------------
-
-/**
- * POST /api/predict-risk: Executes the ML model via a Python subprocess (Manual/On-Demand).
- * Input: JSON features (crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day).
- */
+// --- ML Manual Risk Prediction ---
 app.post('/api/predict-risk', async (req, res) => {
   const { crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day } = req.body;
 
-  if (crowd_density === undefined || avg_flow_speed === undefined ||
-      rate_of_change_density === undefined || hour_of_day === undefined) {
-    return res.status(400).json({ error: 'Missing required ML features.' });
+  if (crowd_density === undefined || avg_flow_speed === undefined || rate_of_change_density === undefined || hour_of_day === undefined) {
+    return res.status(400).json({ error: 'crowd_density, avg_flow_speed, rate_of_change_density, and hour_of_day are required.' });
   }
 
   const inputData = {
     crowd_density: parseFloat(crowd_density),
     avg_flow_speed: parseFloat(avg_flow_speed),
     rate_of_change_density: parseFloat(rate_of_change_density),
-    hour_of_day: parseInt(hour_of_day)
+    hour_of_day: parseInt(hour_of_day),
   };
 
   const pythonScriptPath = './python_scripts/predict_risk.py';
-  const inputJsonString = JSON.stringify(inputData);
+  const pythonProcess = spawn('python', [pythonScriptPath, JSON.stringify(inputData)]);
 
-  const pythonProcess = spawn('python', [pythonScriptPath, inputJsonString]);
+  let outputData = '', errorData = '';
 
-  let outputData = '';
-  let errorData = '';
-
-  pythonProcess.stdout.on('data', (data) => {
-    outputData += data.toString();
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    errorData += data.toString();
-  });
+  pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
+  pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
 
   pythonProcess.on('close', (code) => {
     if (code !== 0) {
-      console.error(`Python script exited with code ${code}. Error: ${errorData}`);
+      console.error(`Python script (ML) exited with code ${code}. Error: ${errorData}`);
       return res.status(500).json({ error: `Python script error: ${errorData || 'Unknown error'}` });
     }
 
     const predictionResult = outputData.trim();
-    console.log(`Manual API: Prediction result from Python: ${predictionResult}`);
+    console.log(`Manual Prediction Result: ${predictionResult}`);
 
     if (!['Low', 'Medium', 'High', 'Critical'].includes(predictionResult)) {
-        console.error(`Python script returned unexpected result: ${predictionResult}`);
-        return res.status(500).json({ error: `Python script returned unexpected result: ${predictionResult}` });
+      return res.status(500).json({ error: `Unexpected result from Python script: ${predictionResult}` });
     }
 
     res.json({ predicted_risk_level: predictionResult, input_used: inputData });
   });
 
   pythonProcess.on('error', (err) => {
-    console.error('Failed to start Python process:', err);
+    console.error('Failed to start Python process (ML):', err);
     res.status(500).json({ error: 'Failed to start ML prediction process' });
   });
 });
 
-/**
- * POST /api/calculate-evacuation-route: Placeholder for running the ADA algorithm.
- * This route is for future implementation and dynamic route planning.
- */
-app.post('/api/calculate-evacuation-route', (req, res) => {
-  console.log("Received request to calculate evacuation route.");
-  res.status(501).json({ error: 'Evacuation route calculation is not yet implemented (requires ADA algorithm).' });
+// --- NEW: Dynamic Evacuation Route Calculation ---
+app.post('/api/calculate-evacuation-route', async (req, res) => {
+  const { start_lat, start_lng, end_lat, end_lng, city_name = "New Delhi, India" } = req.body;
+
+  if ([start_lat, start_lng, end_lat, end_lng].some(v => v === undefined)) {
+    return res.status(400).json({ error: 'start_lat, start_lng, end_lat, and end_lng are required.' });
+  }
+
+  const numericStartLat = parseFloat(start_lat);
+  const numericStartLng = parseFloat(start_lng);
+  const numericEndLat = parseFloat(end_lat);
+  const numericEndLng = parseFloat(end_lng);
+
+  if ([numericStartLat, numericStartLng, numericEndLat, numericEndLng].some(isNaN)) {
+    return res.status(400).json({ error: 'Latitude and longitude values must be numeric.' });
+  }
+
+  const pythonScriptPath = './python_scripts/calculate_evacuation_route.py';
+  const args = [
+    pythonScriptPath,
+    numericStartLat.toString(),
+    numericStartLng.toString(),
+    numericEndLat.toString(),
+    numericEndLng.toString(),
+    city_name
+  ];
+
+  const pythonProcess = spawn('python', args);
+  let outputData = '', errorData = '';
+
+  pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
+  pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
+
+  pythonProcess.on('close', (code) => {
+    if (code !== 0) {
+      let errorMessage = `Python script error: ${errorData || 'Unknown error'}`;
+      try {
+        const errorJson = JSON.parse(errorData);
+        if (errorJson.message) errorMessage = errorJson.message;
+      } catch (_) {}
+      return res.status(500).json({ error: errorMessage });
+    }
+
+    try {
+      const result = JSON.parse(outputData.trim());
+      if (result.status !== 'success' || !Array.isArray(result.route_coordinates)) {
+        return res.status(500).json({ error: 'Unexpected result structure from evacuation script.' });
+      }
+      res.json(result);
+    } catch (err) {
+      console.error('Failed to parse Python script output:', err);
+      res.status(500).json({ error: 'Failed to parse result from evacuation route script.' });
+    }
+  });
+
+  pythonProcess.on('error', (err) => {
+    console.error('Failed to start Python process (Evacuation):', err);
+    res.status(500).json({ error: 'Failed to start evacuation route calculation process' });
+  });
 });
 
-// ----------------------------------------------------------------------
-// AUTOMATIC RISK PREDICTION LOGIC (INTELLIGENT WARNING SYSTEM)
-// ----------------------------------------------------------------------
-
-/**
- * Periodically fetches latest zone metrics, calculates required features,
- * runs the ML model, and emits risk alerts via Socket.IO.
- */
+// --- Automatic Risk Prediction ---
 async function runAutomaticRiskPrediction() {
   try {
-    console.log("Automatic Risk Prediction: Fetching latest zone metrics...");
-    
-    // Query to get the 10 most recent zone metrics across all zones
     const result = await pool.query(`
       SELECT zone_id, density, avg_speed, flow_direction, choke_point_id, timestamp
       FROM zone_metrics
@@ -150,70 +165,53 @@ async function runAutomaticRiskPrediction() {
       LIMIT 10
     `);
 
-    if (result.rows.length === 0) {
-        console.log("Automatic Risk Prediction: No recent zone metrics found.");
-        return;
-    }
+    if (result.rows.length === 0) return;
 
-    // --- Feature Calculation (Simplified) ---
-    const latestMetric = result.rows[0];
+    const latest = result.rows[0];
     let rate_of_change_density = 0;
-    
-    const sameZoneMetrics = result.rows.filter(row => row.zone_id === latestMetric.zone_id)
-                                      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    // Calculate density rate of change if at least two data points exist for the same zone
+    const sameZoneMetrics = result.rows.filter(row => row.zone_id === latest.zone_id)
+                                       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
     if (sameZoneMetrics.length >= 2) {
-        const recent = sameZoneMetrics[0];
-        const previous = sameZoneMetrics[1];
-        const timeDiffSeconds = (new Date(recent.timestamp) - new Date(previous.timestamp)) / 1000;
-
-        if (timeDiffSeconds > 0) {
-            rate_of_change_density = (recent.density - previous.density) / timeDiffSeconds;
-        }
+      const recent = sameZoneMetrics[0];
+      const previous = sameZoneMetrics[1];
+      const timeDiff = (new Date(recent.timestamp) - new Date(previous.timestamp)) / 1000;
+      if (timeDiff > 0) {
+        rate_of_change_density = (recent.density - previous.density) / timeDiff;
+      }
     }
 
-    const hour_of_day = new Date(latestMetric.timestamp).getHours();
+    const hour_of_day = new Date(latest.timestamp).getHours();
 
-    // Prepare input data for the Python script
     const inputData = {
-      crowd_density: latestMetric.density || 0,
-      avg_flow_speed: latestMetric.avg_speed || 0,
-      rate_of_change_density: rate_of_change_density,
-      hour_of_day: hour_of_day,
+      crowd_density: latest.density || 0,
+      avg_flow_speed: latest.avg_speed || 0,
+      rate_of_change_density,
+      hour_of_day
     };
 
-    // --- Call Python Script ---
     const pythonScriptPath = './python_scripts/predict_risk.py';
-    const inputJsonString = JSON.stringify(inputData);
+    const pythonProcess = spawn('python', [pythonScriptPath, JSON.stringify(inputData)]);
 
-    const pythonProcess = spawn('python', [pythonScriptPath, inputJsonString]);
-
-    let outputData = '';
-    let errorData = '';
+    let outputData = '', errorData = '';
 
     pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
     pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
 
     pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        console.error(`Python script (Auto) exited with code ${code}. Error: ${errorData}`);
-        return;
-      }
+      if (code !== 0) return;
 
-      const predictionResult = outputData.trim();
-      console.log(`Auto Prediction: Result for Zone ${latestMetric.zone_id}: ${predictionResult}`);
+      const result = outputData.trim();
+      if (!['Low', 'Medium', 'High', 'Critical'].includes(result)) return;
 
-      if (!['Low', 'Medium', 'High', 'Critical'].includes(predictionResult)) { return; }
-
-      // --- Emit Risk Alert via Socket.IO ---
       const alertData = {
-          type: 'RISK_PREDICTION',
-          zone_id: latestMetric.zone_id,
-          severity_level: predictionResult, // Use prediction as severity
-          message: `Predicted ${predictionResult} risk in Zone ${latestMetric.zone_id} based on metrics.`,
-          generated_at: new Date().toISOString(),
-          input_data_used: inputData
+        type: 'RISK_PREDICTION',
+        zone_id: latest.zone_id,
+        severity_level: result,
+        message: `Predicted ${result} risk in Zone ${latest.zone_id}.`,
+        generated_at: new Date().toISOString(),
+        input_data_used: inputData
       };
 
       io.emit('risk_alert_generated', alertData);
@@ -228,13 +226,9 @@ async function runAutomaticRiskPrediction() {
   }
 }
 
-// Schedule Automatic Risk Prediction to run every 30 seconds
-const predictionInterval = setInterval(runAutomaticRiskPrediction, 30000); 
+const predictionInterval = setInterval(runAutomaticRiskPrediction, 30000); // 30 seconds
 
-// ----------------------------------------------------------------------
-// SERVER & SOCKET SETUP
-// ----------------------------------------------------------------------
-
+// --- Server + Socket.IO Setup ---
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -243,19 +237,13 @@ const io = socketIo(server, {
   }
 });
 
-// Handle Socket.IO connections
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
-  socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` }); // Test event
-  
+  socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` });
+
   socket.on('disconnect', () => {
     console.log('A user disconnected:', socket.id);
   });
-});
-
-// Start the server
-server.listen(port, () => {
-  console.log(`CrowdGuardian Backend server listening at http://localhost:${port}`);
 });
 
 // --- Graceful Shutdown ---
@@ -266,6 +254,10 @@ process.on('SIGINT', () => {
     console.log('Server closed.');
     process.exit(0);
   });
+});
+
+server.listen(port, () => {
+  console.log(`CrowdGuardian Backend server listening at http://localhost:${port}`);
 });
 
 module.exports = { pool, io };
