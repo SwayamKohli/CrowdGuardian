@@ -198,13 +198,21 @@ app.post('/api/calculate-evacuation-route', async (req, res) => {
 const SAFE_ZONE_COORDINATES = { lat: 28.6050, lng: 77.2000 };
 const EVACUATION_TRIGGER_LEVELS = ['High', 'Critical'];
 
+// Zone coordinate mapping (synchronized with MapView.jsx for visualization)
+const ZONE_COORDINATE_MAPPING = {
+    'Z1': { lat: 28.6316, lng: 77.2180 }, // Connaught Place Area
+    'Z2': { lat: 28.6129, lng: 77.2274 }, // India Gate Area
+    'Z3': { lat: 28.5535, lng: 77.2588 }, // Lotus Temple Vicinity
+    'Z4': { lat: 28.6562, lng: 77.2410 }  // Red Fort Area
+};
+
 /**
  * Periodically fetches latest zone metrics, calculates required features,
  * runs the ML model, and emits risk alerts and evacuation routes via Socket.IO.
  */
 async function runAutomaticRiskPrediction() {
   try {
-    console.log("Automatic Risk Prediction: Fetching latest zone metrics...");
+    // console.log("Automatic Risk Prediction: Fetching latest zone metrics..."); // Removed unnecessary console.log
     
     // Query to get the 10 most recent zone metrics across all zones
     const result = await pool.query(`
@@ -215,7 +223,7 @@ async function runAutomaticRiskPrediction() {
     `);
 
     if (result.rows.length === 0) {
-        console.log("Automatic Risk Prediction: No recent zone metrics found.");
+        // console.log("Automatic Risk Prediction: No recent zone metrics found."); // Removed unnecessary console.log
         return;
     }
 
@@ -253,25 +261,25 @@ async function runAutomaticRiskPrediction() {
       }
 
       // --- Emit Risk Alert via Socket.IO ---
+      const alertTimestampIso = new Date().toISOString(); // CRITICAL FIX: Generate ISO timestamp ONCE
+
       const alertData = {
           type: 'RISK_PREDICTION',
           zone_id: latestMetric.zone_id,
           severity_level: predictionResult,
           message: `Predicted ${predictionResult} risk in Zone ${latestMetric.zone_id} based on metrics.`,
-          generated_at: new Date().toISOString(),
+          timestamp: alertTimestampIso, // Use 'timestamp' for consistency with frontend display logic
+          generated_at: alertTimestampIso,
           input_data_used: inputData
       };
+      // console.log("Automatic Risk Prediction: Emitting Socket.IO event 'risk_alert_generated' with ", alertData); // Removed unnecessary console.log
       io.emit('risk_alert_generated', alertData);
 
       // --- Trigger Evacuation Route Calculation on High/Critical Risk ---
       if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
           console.log(`Automatic Evacuation: High risk detected in zone ${latestMetric.zone_id}. Triggering route calculation...`);
 
-          // Simulation: Get start coordinates based on zone ID or a placeholder logic
-          let startCoord = null;
-          if (latestMetric.zone_id === 'Z1') {
-            startCoord = { lat: latestMetric.density > 3.0 ? 28.6145 : 28.6150, lng: latestMetric.avg_speed < 0.5 ? 77.2085 : 77.2090 };
-          }
+          const startCoord = ZONE_COORDINATE_MAPPING[latestMetric.zone_id];
 
           if (!startCoord) {
             console.log(`Automatic Evacuation: Start coordinates for zone ${latestMetric.zone_id} unknown. Skipping route calculation.`);

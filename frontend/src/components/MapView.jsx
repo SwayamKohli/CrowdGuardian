@@ -1,3 +1,4 @@
+// frontend/src/components/MapView.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -18,18 +19,25 @@ L.Icon.Default.mergeOptions({
 });
 
 const MapView = () => {
-  // Map initialization parameters, centered around the new South Delhi zones
-  const center = [28.54, 77.15];
-  const zoom = 14;
+  // --- UPDATED MAP VIEW PARAMETERS FOR BETTER VISUALIZATION ---
+  // Center the map on a central point in Delhi that can show all key landmarks reasonably well.
+  // Note: Z1 (CP) and Z4 (RF) are quite far apart N-S. Z2 (IG) and Z3 (LT) are E-W.
+  // A compromise center is needed.
+  const center = [28.61, 77.23]; // Slightly south of CP, central longitude
+  const zoom = 11; // Zoom out a bit more to capture the spread (was 12)
 
   // State for data from API and simulation
   const [chokePoints, setChokePoints] = useState([]);
-  // UPDATED: Simulated zone metrics with new, better-spaced coordinates
+  // Define zone metrics with locations matching backend simulation and choke point locations
   const [zoneMetrics, setZoneMetrics] = useState([
-    { id: 'Z1_sim', zoneId: 'Z1', location: [28.5535, 77.1585], density: 2.5, avgSpeed: 0.9, flowDirection: 90, description: 'Simulated Z1 (Hauz Khas)' },
-    { id: 'Z2_sim', zoneId: 'Z2', location: [28.5520, 77.1620], density: 4.0, avgSpeed: 0.7, flowDirection: 180, description: 'Simulated Z2 (Siri Fort)' },
-    { id: 'Z3_sim', zoneId: 'Z3', location: [28.5285, 77.1372], density: 1.8, avgSpeed: 1.2, flowDirection: 0, description: 'Simulated Z3 (Qutub Minar)' },
-    { id: 'Z4_sim', zoneId: 'Z4', location: [28.5355, 77.1450], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Simulated Z4 (Select Citywalk)' },
+    // Connaught Place (Z1)
+    { id: 'Z1_CP', zoneId: 'Z1', location: [28.6316, 77.2180], density: 2.5, avgSpeed: 0.9, flowDirection: 90, description: 'Zone Z1 (Connaught Place Area)' },
+    // India Gate (Z2)
+    { id: 'Z2_IG', zoneId: 'Z2', location: [28.6129, 77.2274], density: 4.0, avgSpeed: 0.7, flowDirection: 180, description: 'Zone Z2 (India Gate Area)' },
+    // Lotus Temple (Z3)
+    { id: 'Z3_LT', zoneId: 'Z3', location: [28.5535, 77.2588], density: 1.8, avgSpeed: 1.2, flowDirection: 0, description: 'Zone Z3 (Lotus Temple Vicinity)' },
+    // Red Fort (Z4)
+    { id: 'Z4_RF', zoneId: 'Z4', location: [28.6562, 77.2410], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Zone Z4 (Red Fort Area)' },
   ]);
 
   // State for loading/error
@@ -73,6 +81,7 @@ const MapView = () => {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
+        console.log("MapView: Fetched choke points from backend:", data);
         setChokePoints(data);
       } catch (err) {
         console.error('Error fetching choke points:', err);
@@ -87,100 +96,153 @@ const MapView = () => {
 
   // Effect hook for Socket.IO Client Setup and Listener Definitions
   useEffect(() => {
+    console.log("MapView: Effect for Socket.IO setup running.");
+
     if (!socketRef.current) {
+      console.log("MapView: Creating new Socket.IO client...");
       const newSocket = io('http://localhost:3000');
+
       socketRef.current = newSocket;
 
       // --- Define Listeners ---
       const handleHello = (data) => {
+        console.log('MapView: Received server hello:', data);
         setSocketMessages(prev => [...prev, { type: 'hello', ...data, timestamp: new Date().toLocaleTimeString() }]);
       };
 
       const handleRiskAlert = (data) => {
+        console.log('MapView: Received risk alert:', data);
+
+        // --- NEW: Clear evacuation route if risk is low/medium for the same zone ---
+        const LOW_RISK_LEVELS = ['Low', 'Medium'];
+        if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoute && evacuationRoute.zone_id === data.zone_id) {
+            console.log(`MapView: Low/Medium risk for zone ${data.zone_id}. Clearing evacuation route.`);
+            setEvacuationRoute(null);
+        }
+
         // Add new alert to state for Polygon rendering
         setRiskAlerts(prevAlerts => {
           const maxAlerts = 10;
           let updatedAlerts = [...prevAlerts, data];
           if (updatedAlerts.length > maxAlerts) {
-            updatedAlerts = updatedAlerts.slice(-maxAlerts);
+            updatedAlerts = updatedAlerts.slice(-maxAlerts); // Keep only the last N alerts
           }
           return updatedAlerts;
         });
-        setSocketMessages(prev => [...prev, { type: 'risk_alert', ...data, timestamp: new Date().toLocaleTimeString() }]);
+
+        // --- FIX: Format timestamp robustly for socketMessages list ---
+        let formattedTimestamp = 'N/A';
+        // Prefer 'timestamp' as sent by the backend, fallback to 'generated_at' if needed
+        const timestampToUse = data.timestamp || data.generated_at;
+        if (timestampToUse) {
+            const dateObj = new Date(timestampToUse);
+            if (dateObj instanceof Date && !isNaN(dateObj)) {
+                formattedTimestamp = dateObj.toLocaleTimeString();
+            } else {
+                console.warn('MapView: Failed to parse risk alert timestamp (using raw):', timestampToUse);
+                formattedTimestamp = timestampToUse; // Show raw value if parsing fails
+            }
+        }
+        setSocketMessages(prev => [...prev, { type: 'risk_alert', ...data, timestamp: formattedTimestamp }]);
       };
 
       const handleEvacuationRoute = (data) => {
-        // Store the received route data for Polyline rendering
+        console.log('MapView: Received evacuation route:', data);
         setEvacuationRoute(data);
         setSocketMessages(prev => [...prev, { type: 'evacuation_route', ...data, timestamp: new Date().toLocaleTimeString() }]);
       };
 
       const handleEvacuationError = (data) => {
+        console.error('MapView: Received evacuation error:', data);
         setSocketMessages(prev => [...prev, { type: 'evacuation_error', error: data.error, zone_id: data.zone_id, timestamp: new Date().toLocaleTimeString() }]);
       };
 
-      // Attach the listeners
+      // Attach the listeners to the new socket instance
       newSocket.on('server_hello', handleHello);
       newSocket.on('risk_alert_generated', handleRiskAlert);
       newSocket.on('evacuation_route_calculated', handleEvacuationRoute);
       newSocket.on('evacuation_error', handleEvacuationError);
 
-      // Store listener functions in the ref for cleanup
+      // Store listener functions in the ref for cleanup (important!)
       socketRef.current.handleHello = handleHello;
       socketRef.current.handleRiskAlert = handleRiskAlert;
       socketRef.current.handleEvacuationRoute = handleEvacuationRoute;
       socketRef.current.handleEvacuationError = handleEvacuationError;
+
+      // Log connection
+      newSocket.on('connect', () => {
+          console.log('MapView: Socket.IO client connected successfully.');
+      });
+
+      // Log disconnection (optional)
+      newSocket.on('disconnect', (reason) => {
+          console.log('MapView: Socket.IO client disconnected:', reason);
+      });
+    } else {
+        console.log("MapView: Socket.IO client already exists in ref, not creating a new one.");
     }
 
+    // Cleanup function: close the socket connection and remove listeners when the component unmounts
     return () => {
+      console.log("MapView: Cleanup function running. Closing socket if it exists.");
       if (socketRef.current) {
-        // Clean up all event listeners and close the socket connection
-        socketRef.current.off('server_hello', socketRef.current.handleHello);
-        socketRef.current.off('risk_alert_generated', socketRef.current.handleRiskAlert);
-        socketRef.current.off('evacuation_route_calculated', socketRef.current.handleEvacuationRoute);
-        socketRef.current.off('evacuation_error', socketRef.current.handleEvacuationError);
+        // Remove the specific listeners we attached
+        if (socketRef.current.handleHello) {
+          socketRef.current.off('server_hello', socketRef.current.handleHello);
+        }
+        if (socketRef.current.handleRiskAlert) {
+          socketRef.current.off('risk_alert_generated', socketRef.current.handleRiskAlert);
+        }
+        if (socketRef.current.handleEvacuationRoute) {
+          socketRef.current.off('evacuation_route_calculated', socketRef.current.handleEvacuationRoute);
+        }
+        if (socketRef.current.handleEvacuationError) {
+          socketRef.current.off('evacuation_error', socketRef.current.handleEvacuationError);
+        }
+        // Close the socket connection
         socketRef.current.close();
+        // Clear the ref
         socketRef.current = null;
       }
     };
-  }, []);
+  }, []); // Empty dependency array means this runs only once on mount, and the cleanup runs on unmount
 
-  // Function to determine marker color based on utilization
+  // Function to determine marker color based on utilization (SIMPLIFIED)
   const getMarkerColor = (utilization, capacity) => {
     const util = utilization || 0;
     const cap = capacity || 100;
     const percentage = (util / cap) * 100;
-    if (percentage > 80) return '#dc3545';
-    if (percentage > 60) return '#ffc107';
-    return '#28a745';
+    if (percentage > 80) return '#dc3545'; // Red (High Risk)
+    if (percentage > 60) return '#ffc107'; // Yellow (Medium Risk)
+    return '#28a745'; // Green (Low Risk)
   };
 
-  // Function to determine circle color based on density
+  // Function to determine circle color based on density (Vibrant colors)
   const getDensityColor = (density) => {
-    if (density > 3.5) return '#dc3545';
-    if (density > 2.5) return '#ffc107';
-    if (density > 1.5) return '#28a745';
-    return '#17a2b8';
+    if (density > 3.5) return '#FF0000'; // Bright Red
+    if (density > 2.5) return '#FFA500'; // Orange
+    if (density > 1.5) return '#FFFF00'; // Yellow
+    return '#00FF00'; // Bright Green (instead of blue)
   };
 
-  // Function to determine circle radius based on density
+  // Function to determine circle radius based on density (Larger size)
   const getCircleRadius = (density) => {
-    return 50 + (density * 20);
+    return 80 + (density * 30); // Increase base size and scaling factor
   };
 
-  // Function to determine risk zone color based on risk level
+  // Function to determine risk zone color based on risk level (Distinct colors)
   const getRiskZoneColor = (riskLevel) => {
     switch (riskLevel?.toLowerCase()) {
       case 'critical':
-        return '#8B0000';
+        return '#8B0000'; // Dark Red
       case 'high':
-        return '#dc3545';
+        return '#FF0000'; // Bright Red
       case 'medium':
-        return '#ffc107';
+        return '#FFA500'; // Orange
       case 'low':
-        return '#28a745';
+        return '#FFFF00'; // Yellow
       default:
-        return '#6c757d';
+        return '#6c757d'; // Grey for unknown levels
     }
   };
 
@@ -188,11 +250,11 @@ const MapView = () => {
   const getEvacuationRouteColor = (riskLevelThatTriggered) => {
     switch (riskLevelThatTriggered?.toLowerCase()) {
       case 'critical':
-        return '#FF4500';
+        return '#FF4500'; // OrangeRed for critical
       case 'high':
-        return '#FF8C00';
+        return '#FF8C00'; // DarkOrange for high
       default:
-        return '#0000FF';
+        return '#0000FF'; // Pure Blue for others or default
     }
   };
 
@@ -203,10 +265,11 @@ const MapView = () => {
    * @returns {Array<Array<number>> | null} Polygon coordinates.
    */
   const getZoneArea = (zoneId, location) => {
-    // UPDATED: Use larger offset for better visibility
-    const offset = 0.001; 
+    // Increase the offset for a larger, more visible area
+    const offset = 0.002; // Was 0.001, then 0.0005
     if (location && Array.isArray(location) && location.length === 2) {
       const [lat, lng] = location;
+      // Return a square polygon around the point
       return [
         [lat - offset, lng - offset],
         [lat - offset, lng + offset],
@@ -214,6 +277,7 @@ const MapView = () => {
         [lat + offset, lng - offset]
       ];
     }
+    // If location is invalid, return null to prevent rendering
     return null;
   };
 
@@ -233,11 +297,28 @@ const MapView = () => {
       <div className="socket-messages">
         <h4>Real-Time Alerts:</h4>
         <ul>
-          {riskAlerts.map((alert, index) => (
-            <li key={`alert-${index}`}>
-              <strong>[{new Date(alert.timestamp).toLocaleTimeString()}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
-            </li>
-          ))}
+          {/* --- FIXED ALERT LIST RENDERING WITH ROBUST TIMESTAMP HANDLING --- */}
+          {riskAlerts.map((alert, index) => {
+            // --- FIX: Robust timestamp parsing specifically for the alert list ---
+            let displayTimestamp = 'N/A';
+            // Prefer 'timestamp' as sent by the backend, fallback to 'generated_at' if needed
+            const alertTimestampToUse = alert.timestamp || alert.generated_at;
+            if (alertTimestampToUse) {
+                const alertDateObj = new Date(alertTimestampToUse);
+                if (alertDateObj instanceof Date && !isNaN(alertDateObj)) {
+                    displayTimestamp = alertDateObj.toLocaleTimeString();
+                } else {
+                    console.warn('MapView: Failed to parse risk alert timestamp for list (using raw):', alertTimestampToUse);
+                    displayTimestamp = alertTimestampToUse; // Show raw value if parsing fails
+                }
+            }
+            // --- END FIX ---
+            return (
+              <li key={`alert-${index}`}>
+                <strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
+              </li>
+            );
+          })}
           {/* Display evacuation route status if available */}
           {evacuationRoute && (
             <li key="evac-status" className="evacuation-message">
@@ -257,7 +338,6 @@ const MapView = () => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        
         {/* Render the evacuation route as a Polyline if it exists */}
         {evacuationRoute && (
           <Polyline
@@ -278,7 +358,6 @@ const MapView = () => {
             </Popup>
           </Polyline>
         )}
-
         {/* Render risk zones as Polygons based on received alerts */}
         {riskAlerts.map((alert, index) => {
           const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
@@ -290,16 +369,16 @@ const MapView = () => {
               <Polygon
                 key={`risk-${alert.zone_id}-${index}`}
                 positions={areaCoords}
-                color={getRiskZoneColor(alert.predicted_risk_level)}
-                fillColor={getRiskZoneColor(alert.predicted_risk_level)}
+                color={getRiskZoneColor(alert.severity_level)} // Use severity_level for color
+                fillColor={getRiskZoneColor(alert.severity_level)}
                 fillOpacity={0.3}
                 weight={2}
               >
                 <Popup>
                   <div>
-                    <strong>Risk Alert: {alert.predicted_risk_level}</strong><br />
+                    <strong>Risk Alert: {alert.severity_level}</strong><br /> {/* Use severity_level */}
                     Zone: {alert.zone_id}<br />
-                    Predicted at: {new Date(alert.timestamp).toLocaleString()}
+                    Predicted at: {new Date(alert.timestamp || alert.generated_at).toLocaleString()} {/* Fallback */}
                   </div>
                 </Popup>
               </Polygon>
@@ -307,7 +386,6 @@ const MapView = () => {
           }
           return null;
         })}
-        
         {/* Render circles for each zone based on simulated density */}
         {zoneMetrics.map((metric) => (
           <Circle
@@ -328,7 +406,6 @@ const MapView = () => {
             </Popup>
           </Circle>
         ))}
-        
         {/* Render markers for each choke point fetched from backend */}
         {chokePoints.map((point) => (
           <Marker
@@ -336,7 +413,7 @@ const MapView = () => {
             position={point.location}
             icon={L.divIcon({
               className: 'custom-marker',
-              // Use assumed column names for color calculation
+              // Use the simplified getMarkerColor function
               html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
               iconSize: [16, 16],
               iconAnchor: [8, 8],
