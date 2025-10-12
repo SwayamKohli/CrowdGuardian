@@ -6,20 +6,28 @@ import sys
 def calculate_route(start_lat, start_lng, end_lat, end_lng, city_name="Delhi, India"):
     """
     Calculates an evacuation route between two coordinates using OpenStreetMap data.
+    Loads a localized graph (1.5km buffer) around the start point to ensure accurate node snapping.
 
     Args:
         start_lat (float): Latitude of the starting point.
         start_lng (float): Longitude of the starting point.
         end_lat (float): Latitude of the ending point.
         end_lng (float): Longitude of the ending point.
-        city_name (str): Name of the city or area to load the graph for.
+        city_name (str): Name of the city (used for context/fallback).
 
     Returns:
         dict: Route data including coordinates, distance, and status.
     """
     try:
-        G = ox.graph_from_place(city_name, network_type="walk")
-
+        # FIX: Load a localized graph around the start point (1500m buffer)
+        # This prevents the algorithm from snapping to a distant central node.
+        G = ox.graph_from_point(
+            (start_lat, start_lng), 
+            dist=1500,  # 1.5 km radius around the starting point
+            network_type="walk"
+        )
+        
+        # Note: nearest_nodes expects (longitude, latitude)
         orig_node = ox.distance.nearest_nodes(G, start_lng, start_lat)
         dest_node = ox.distance.nearest_nodes(G, end_lng, end_lat)
 
@@ -27,6 +35,7 @@ def calculate_route(start_lat, start_lng, end_lat, end_lng, city_name="Delhi, In
         route_length_m = nx.shortest_path_length(G, orig_node, dest_node, weight='length')
         route_length_km = route_length_m / 1000
 
+        # Coordinates are extracted as (latitude, longitude) for Leaflet compatibility
         coords = [(G.nodes[n]["y"], G.nodes[n]["x"]) for n in route]
         route_data = [list(coord) for coord in coords]
 
@@ -43,7 +52,7 @@ def calculate_route(start_lat, start_lng, end_lat, end_lng, city_name="Delhi, In
     except nx.NetworkXNoPath:
         return {
             "status": "error",
-            "message": f"No walkable path found between the origin ({start_lat}, {start_lng}) and destination ({end_lat}, {end_lng}) in {city_name}."
+            "message": f"No walkable path found between the origin ({start_lat}, {start_lng}) and destination ({end_lat}, {end_lng}). Ensure both points are near roads in the loaded graph area."
         }
     except Exception as e:
         return {
