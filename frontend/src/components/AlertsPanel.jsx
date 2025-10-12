@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import './AlertsPanel.css';
 
+// Helper function to format ALERT_TYPE strings for display (e.g., CHOKE_POINT_ALERT -> Choke Point Alert)
+const formatAlertType = (typeString) => {
+  if (!typeString) return 'N/A';
+  // 1. Replace underscores with spaces
+  // 2. Convert to lowercase
+  // 3. Capitalize the first letter of each word
+  return typeString
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 const AlertsPanel = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +95,8 @@ const AlertsPanel = () => {
           alerts.map((alert) => (
             <div key={alert.id} className={getAlertClass(alert.severity_level)}>
               <div className="alert-header">
-                <span className="alert-type">{alert.alert_type}</span>
+                {/* FIX: Apply formatting function here */}
+                <span className="alert-type">{formatAlertType(alert.alert_type)}</span>
                 <span className="alert-severity">{alert.severity_level}</span>
                 <span className="alert-time">{formatTime(alert.generated_at)}</span>
               </div>
