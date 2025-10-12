@@ -60,7 +60,7 @@ const evacuationRoutesRouter = createEvacuationRoutesRouter(pool);
 app.use('/api/evacuation-routes', evacuationRoutesRouter);
 
 // ----------------------------------------------------------------------
-// ML MODEL AND ALGORITHM ROUTES
+// ML MODEL AND ALGORITHM UTILITIES
 // ----------------------------------------------------------------------
 
 /**
@@ -203,8 +203,139 @@ const ZONE_COORDINATE_MAPPING = {
     'Z1': { lat: 28.6316, lng: 77.2180 }, // Connaught Place Area
     'Z2': { lat: 28.6129, lng: 77.2274 }, // India Gate Area
     'Z3': { lat: 28.5535, lng: 77.2588 }, // Lotus Temple Vicinity
-    'Z4': { lat: 28.6562, lng: 77.2410 }  // Red Fort Area
+    'Z4': { lat: 28.6575, lng: 77.2340 }   // Red Fort Area
 };
+
+/**
+ * Executes ML prediction and, if necessary, the evacuation calculation for a single zone.
+ * This function isolates the asynchronous logic to prevent closure errors in the main loop.
+ * @param {string} zoneId - The zone currently being processed.
+ * @param {Object[]} zoneMetrics - List of recent metrics for this zone.
+ */
+const processZoneRisk = async (zoneId, zoneMetrics) => {
+    const latestMetric = zoneMetrics[0]; 
+
+    // Calculate features for THIS zone
+    let rate_of_change_density = 0;
+    
+    if (zoneMetrics.length >= 2) {
+        const recent = zoneMetrics[0];
+        const previous = zoneMetrics[1];
+        const timeDiffSeconds = (new Date(recent.timestamp) - new Date(previous.timestamp)) / 1000;
+        
+        if (timeDiffSeconds > 0) {
+            rate_of_change_density = (recent.density - previous.density) / timeDiffSeconds;
+        }
+    }
+
+    const hour_of_day = new Date(latestMetric.timestamp).getHours();
+
+    const inputData = {
+        crowd_density: latestMetric.density || 0,
+        avg_flow_speed: latestMetric.avg_speed || 0,
+        rate_of_change_density: rate_of_change_density,
+        hour_of_day: hour_of_day,
+    };
+
+    // Execute ML Prediction for THIS zone
+    runPythonPrediction('./python_scripts/predict_risk.py', inputData, (err, predictionResult) => {
+        if (err) {
+            console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
+            return;
+        }
+
+        // Emit Risk Alert via Socket.IO
+        const alertTimestampIso = new Date().toISOString();
+
+        const alertData = {
+            type: 'RISK_PREDICTION',
+            zone_id: zoneId,
+            severity_level: predictionResult,
+            message: `Predicted ${predictionResult} risk in Zone ${zoneId} based on metrics.`,
+            timestamp: alertTimestampIso,
+            generated_at: alertTimestampIso,
+            input_data_used: inputData
+        };
+        io.emit('risk_alert_generated', alertData);
+
+        // Trigger Evacuation Route Calculation on High/Critical Risk
+        if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
+            console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Triggering route calculation...`);
+
+            const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
+
+            if (!startCoord) {
+                console.log(`Automatic Evacuation: Start coordinates for zone ${zoneId} unknown. Skipping route calculation.`);
+                return;
+            }
+
+            const start_lat = startCoord.lat;
+            const start_lng = startCoord.lng;
+            const end_lat = SAFE_ZONE_COORDINATES.lat;
+            const end_lng = SAFE_ZONE_COORDINATES.lng;
+            const city_name = "New Delhi, India";
+
+            const evacScriptPath = './python_scripts/calculate_evacuation_route.py';
+            const evacArgs = [
+                evacScriptPath,
+                start_lat.toString(),
+                start_lng.toString(),
+                end_lat.toString(),
+                end_lng.toString(),
+                city_name
+            ];
+
+            const evacProcess = spawn('python', evacArgs);
+
+            let evacOutputData = '';
+            let evacErrorData = '';
+
+            evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
+            evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
+
+            evacProcess.on('close', (evacCode) => {
+                if (evacCode !== 0) {
+                    console.error(`Python script (Evacuation Auto) for zone ${zoneId} exited with code ${evacCode}. Error: ${evacErrorData}`);
+                    io.emit('evacuation_error', { error: `Evacuation route calculation error: ${evacErrorData || 'Unknown error'}`, zone_id: zoneId });
+                    return;
+                }
+
+                try {
+                    const evacResult = JSON.parse(evacOutputData.trim());
+                    if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
+                        throw new Error(evacResult.message || 'Unexpected result structure');
+                    }
+
+                    // Emit Evacuation Route via Socket.IO
+                    const routeData = {
+                        type: 'EVACUATION_ROUTE_CALCULATED',
+                        zone_id: zoneId,
+                        risk_level_that_triggered: predictionResult,
+                        route_coordinates: evacResult.route_coordinates,
+                        distance_kms: evacResult.distance_kms,
+                        start_point: evacResult.start_point,
+                        end_point: evacResult.end_point,
+                        calculated_at: new Date().toISOString()
+                    };
+
+                    console.log(`Automatic Evacuation: Emitting Socket.IO event 'evacuation_route_calculated' for zone ${zoneId}`);
+                    io.emit('evacuation_route_calculated', routeData);
+                } catch (evacParseError) {
+                    console.error('Error handling evacuation route output:', evacParseError.message);
+                    io.emit('evacuation_error', { error: `Error parsing evacuation route result: ${evacParseError.message}`, zone_id: zoneId });
+                }
+            });
+
+            evacProcess.on('error', (err) => {
+                console.error(`Failed to start Python process (Evacuation Auto) for zone ${zoneId}:`, err);
+                io.emit('evacuation_error', { error: 'Failed to start evacuation route calculation process (Auto)', zone_id: zoneId });
+            });
+        } else {
+            console.log(`Automatic Risk Prediction: Risk level (${predictionResult}) for zone ${zoneId} is not high enough to trigger evacuation.`);
+        }
+    });
+};
+
 
 /**
  * Periodically fetches recent zone metrics for EACH ZONE, calculates required features,
@@ -238,133 +369,10 @@ async function runAutomaticRiskPrediction() {
 
     console.log(`Automatic Risk Prediction: Found data for zones: ${Object.keys(metricsByZone).join(', ')}`);
 
-    // 3. Process each zone individually
+    // 3. Process each zone individually using the scoped processing function
     for (const zoneId of Object.keys(metricsByZone)) {
-        const zoneMetrics = metricsByZone[zoneId];
-        const latestMetric = zoneMetrics[0]; 
-
-        // 4. Calculate features for THIS zone
-        let rate_of_change_density = 0;
-        
-        if (zoneMetrics.length >= 2) {
-            const recent = zoneMetrics[0];
-            const previous = zoneMetrics[1];
-            const timeDiffSeconds = (new Date(recent.timestamp) - new Date(previous.timestamp)) / 1000;
-            
-            if (timeDiffSeconds > 0) {
-                rate_of_change_density = (recent.density - previous.density) / timeDiffSeconds;
-            }
-        }
-
-        const hour_of_day = new Date(latestMetric.timestamp).getHours();
-
-        const inputData = {
-            crowd_density: latestMetric.density || 0,
-            avg_flow_speed: latestMetric.avg_speed || 0,
-            rate_of_change_density: rate_of_change_density,
-            hour_of_day: hour_of_day,
-        };
-
-        // 5. Execute ML Prediction for THIS zone
-        runPythonPrediction('./python_scripts/predict_risk.py', inputData, async (err, predictionResult) => {
-            if (err) {
-                console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
-                return;
-            }
-
-            // 6. Emit Risk Alert via Socket.IO
-            const alertTimestampIso = new Date().toISOString();
-
-            const alertData = {
-                type: 'RISK_PREDICTION',
-                zone_id: zoneId,
-                severity_level: predictionResult,
-                message: `Predicted ${predictionResult} risk in Zone ${zoneId} based on metrics.`,
-                timestamp: alertTimestampIso, // CRITICAL FIX: Send ISO timestamp string
-                generated_at: alertTimestampIso,
-                input_data_used: inputData
-            };
-            io.emit('risk_alert_generated', alertData);
-
-            // 7. Trigger Evacuation Route Calculation on High/Critical Risk
-            if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
-                console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Triggering route calculation...`);
-
-                const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
-
-                if (!startCoord) {
-                    console.log(`Automatic Evacuation: Start coordinates for zone ${zoneId} unknown. Skipping route calculation.`);
-                    return;
-                }
-
-                const start_lat = startCoord.lat;
-                const start_lng = startCoord.lng;
-                const end_lat = SAFE_ZONE_COORDINATES.lat;
-                const end_lng = SAFE_ZONE_COORDINATES.lng;
-                const city_name = "New Delhi, India";
-
-                const evacScriptPath = './python_scripts/calculate_evacuation_route.py';
-                const evacArgs = [
-                    evacScriptPath,
-                    start_lat.toString(),
-                    start_lng.toString(),
-                    end_lat.toString(),
-                    end_lng.toString(),
-                    city_name
-                ];
-
-                const evacProcess = spawn('python', evacArgs);
-
-                let evacOutputData = '';
-                let evacErrorData = '';
-
-                evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
-                evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
-
-                evacProcess.on('close', (evacCode) => {
-                    if (evacCode !== 0) {
-                        console.error(`Python script (Evacuation Auto) for zone ${zoneId} exited with code ${evacCode}. Error: ${evacErrorData}`);
-                        io.emit('evacuation_error', { error: `Evacuation route calculation error: ${evacErrorData || 'Unknown error'}`, zone_id: zoneId });
-                        return;
-                    }
-
-                    try {
-                        const evacResult = JSON.parse(evacOutputData.trim());
-                        if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
-                            throw new Error(evacResult.message || 'Unexpected result structure');
-                        }
-
-                        // Emit Evacuation Route via Socket.IO
-                        const routeData = {
-                            type: 'EVACUATION_ROUTE_CALCULATED',
-                            zone_id: zoneId,
-                            risk_level_that_triggered: predictionResult,
-                            route_coordinates: evacResult.route_coordinates,
-                            distance_kms: evacResult.distance_kms,
-                            start_point: evacResult.start_point,
-                            end_point: evacResult.end_point,
-                            calculated_at: new Date().toISOString()
-                        };
-
-                        console.log(`Automatic Evacuation: Emitting Socket.IO event 'evacuation_route_calculated' for zone ${zoneId}`);
-                        io.emit('evacuation_route_calculated', routeData);
-                    } catch (evacParseError) {
-                        console.error('Error handling evacuation route output:', evacParseError.message);
-                        io.emit('evacuation_error', { error: `Error parsing evacuation route result: ${evacParseError.message}`, zone_id: zoneId });
-                    }
-                });
-
-                evacProcess.on('error', (err) => {
-                    console.error('Failed to start Python process (Evacuation Auto):', err);
-                    io.emit('evacuation_error', { error: 'Failed to start evacuation route calculation process (Auto)', zone_id: zoneId });
-                });
-            } else {
-                console.log(`Automatic Risk Prediction: Risk level (${predictionResult}) for zone ${zoneId} is not high enough to trigger evacuation.`);
-            }
-
-        }); // End of runPythonPrediction callback for this zone
-
-    } // End of for loop iterating through zones
+        processZoneRisk(zoneId, metricsByZone[zoneId]);
+    }
 
   } catch (err) {
     console.error('Error during automatic risk prediction loop:', err);

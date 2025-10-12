@@ -26,7 +26,8 @@ module.exports = (pool) => {
 
   router.get('/', async (req, res) => {
     try {
-      const result = await pool.query('SELECT id, name, description, capacity, location FROM choke_points ORDER BY name ASC');
+      // FIX: Include the current_utilization column in the query
+      const result = await pool.query('SELECT id, name, description, capacity, current_utilization, location FROM choke_points ORDER BY name ASC');
       
       // Process database rows to transform the POINT object into a standard [lat, lng] array
       const processedRows = result.rows.map(row => ({
@@ -34,6 +35,7 @@ module.exports = (pool) => {
         location: parsePoint(row.location),
       }));
       
+      // The processedRows array now correctly includes the current_utilization field.
       res.json(processedRows);
     } catch (err) {
       console.error('Error fetching choke points:', err);

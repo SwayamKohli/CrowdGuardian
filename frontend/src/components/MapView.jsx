@@ -24,12 +24,12 @@ const MapView = () => {
 
   // State for data from API and simulation
   const [chokePoints, setChokePoints] = useState([]);
-  // Zone Metrics with Central Delhi locations (Used for Polygon lookup)
+  // Zone Metrics with Central Delhi locations
   const [zoneMetrics, setZoneMetrics] = useState([
     { id: 'Z1_CP', zoneId: 'Z1', location: [28.6316, 77.2180], density: 2.5, avgSpeed: 0.9, flowDirection: 90, description: 'Zone Z1 (Connaught Place Area)' },
     { id: 'Z2_IG', zoneId: 'Z2', location: [28.6129, 77.2274], density: 4.0, avgSpeed: 0.7, flowDirection: 180, description: 'Zone Z2 (India Gate Area)' },
     { id: 'Z3_LT', zoneId: 'Z3', location: [28.5535, 77.2588], density: 1.8, avgSpeed: 1.2, flowDirection: 0, description: 'Zone Z3 (Lotus Temple Vicinity)' },
-    { id: 'Z4_RF', zoneId: 'Z4', location: [28.6562, 77.2410], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Zone Z4 (Red Fort Area)' },
+    { id: 'Z4_RF', zoneId: 'Z4', location: [28.6575, 77.2340], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Zone Z4 (Red Fort Area)' },
   ]);
 
   // State for loading/error
@@ -42,8 +42,8 @@ const MapView = () => {
   // State for real-time risk alerts received via Socket.IO
   const [riskAlerts, setRiskAlerts] = useState([]);
 
-  // State for the evacuation route received via Socket.IO
-  const [evacuationRoute, setEvacuationRoute] = useState(null);
+  // FIX 1: State changed to hold MULTIPLE evacuation routes keyed by zone_id
+  const [evacuationRoutes, setEvacuationRoutes] = useState({});
 
   // Ref to hold the socket instance for stable listeners
   const socketRef = useRef(null);
@@ -62,7 +62,7 @@ const MapView = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // EFFECT FIX: Implement periodic fetching for Choke Points data
+  // Effect hook to fetch static Choke Points data periodically from backend API
   useEffect(() => {
     const fetchChokePoints = async () => {
       try {
@@ -81,15 +81,10 @@ const MapView = () => {
       }
     };
 
-    // Fetch immediately on mount
     fetchChokePoints();
-
-    // Set up an interval to fetch every 5 seconds (5000 ms)
     const intervalId = setInterval(fetchChokePoints, 5000); 
-
-    // Cleanup function: clear the interval when the component unmounts
     return () => clearInterval(intervalId);
-  }, []); // Empty dependency array means this runs once
+  }, []);
 
   // Effect hook for Socket.IO Client Setup and Listener Definitions
   useEffect(() => {
@@ -105,9 +100,13 @@ const MapView = () => {
       const handleRiskAlert = (data) => {
         const LOW_RISK_LEVELS = ['Low', 'Medium'];
 
-        // NEW: Clear evacuation route if risk drops to Low/Medium for the same zone
-        if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoute && evacuationRoute.zone_id === data.zone_id) {
-            setEvacuationRoute(null);
+        // FIX 3: Clear evacuation route if risk drops for the specific zone
+        if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoutes[data.zone_id]) {
+            setEvacuationRoutes(prevRoutes => {
+                const updatedRoutes = { ...prevRoutes };
+                delete updatedRoutes[data.zone_id];
+                return updatedRoutes;
+            });
         }
         
         // Add new alert to state for Polygon rendering
@@ -120,7 +119,7 @@ const MapView = () => {
           return updatedAlerts;
         });
 
-        // FIX: Robust timestamp parsing for socketMessages list
+        // Robust timestamp parsing for socketMessages list
         let formattedTimestamp = 'N/A';
         const timestampToUse = data.timestamp || data.generated_at;
         if (timestampToUse) {
@@ -135,7 +134,11 @@ const MapView = () => {
       };
 
       const handleEvacuationRoute = (data) => {
-        setEvacuationRoute(data);
+        // FIX 2: Store the received route keyed by zone_id
+        setEvacuationRoutes(prevRoutes => ({
+            ...prevRoutes,
+            [data.zone_id]: data
+        }));
         setSocketMessages(prev => [...prev, { type: 'evacuation_route', ...data, timestamp: new Date().toLocaleTimeString() }]);
       };
 
@@ -167,7 +170,7 @@ const MapView = () => {
         socketRef.current = null;
       }
     };
-  }, [evacuationRoute]); // Include evacuationRoute in dependency array for cleanup logic fix
+  }, [evacuationRoutes]); // Dependency updated to trigger re-run of listener setup only when necessary
 
   // Function to determine marker color based on utilization
   const getMarkerColor = (utilization, capacity) => {
@@ -275,11 +278,11 @@ const MapView = () => {
             );
           })}
           {/* Display evacuation route status if available */}
-          {evacuationRoute && (
-            <li key="evac-status" className="evacuation-message">
-              <strong>[{new Date().toLocaleTimeString()}] EVACUATION:</strong> Route calculated for {evacuationRoute.zone_id}. Distance: {evacuationRoute.distance_kms} km.
+          {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
+            <li key={`evac-status-${zoneId}`} className="evacuation-message">
+              <strong>[{new Date().toLocaleTimeString()}] EVACUATION:</strong> Route calculated for {routeData.zone_id}. Distance: {routeData.distance_kms} km.
             </li>
-          )}
+          ))}
           {/* Display hello message for connection confirmation */}
           {socketMessages.find(msg => msg.type === 'hello') && (
             <li key="hello-status">
@@ -294,11 +297,12 @@ const MapView = () => {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {/* Render the evacuation route as a Polyline if it exists */}
-        {evacuationRoute && (
+        {/* FIX 4: Render MULTIPLE evacuation routes from the evacuationRoutes object */}
+        {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
           <Polyline
-            positions={evacuationRoute.route_coordinates}
-            color={getEvacuationRouteColor(evacuationRoute.risk_level_that_triggered)}
+            key={`evac-route-${zoneId}`}
+            positions={routeData.route_coordinates} // Array of [lat, lng] pairs
+            color={getEvacuationRouteColor(routeData.risk_level_that_triggered)}
             weight={5}
             opacity={0.8}
             dashArray="10, 10"
@@ -306,14 +310,14 @@ const MapView = () => {
             <Popup>
               <div>
                 <strong>Evacuation Route</strong><br />
-                Zone: {evacuationRoute.zone_id}<br />
-                Triggered by Risk: {evacuationRoute.risk_level_that_triggered}<br />
-                Distance: {evacuationRoute.distance_kms} km<br />
-                Calculated at: {new Date(evacuationRoute.calculated_at).toLocaleString()}
+                Zone: {routeData.zone_id}<br />
+                Triggered by Risk: {routeData.risk_level_that_triggered}<br />
+                Distance: {routeData.distance_kms} km<br />
+                Calculated at: {new Date(routeData.calculated_at).toLocaleString()}
               </div>
             </Popup>
           </Polyline>
-        )}
+        ))}
 
         {/* Render risk zones as Polygons based on received alerts */}
         {riskAlerts.map((alert, index) => {
