@@ -26,8 +26,24 @@ module.exports = (pool) => {
 
   router.get('/', async (req, res) => {
     try {
-      // FIX: Include the current_utilization column in the query
-      const result = await pool.query('SELECT id, name, description, capacity, current_utilization, location FROM choke_points ORDER BY name ASC');
+      // FIX: Left Join with zone_metrics to retrieve the associated zone_id (assuming one primary zone)
+      const query = `
+        SELECT 
+          cp.id, 
+          cp.name, 
+          cp.description, 
+          cp.capacity, 
+          cp.current_utilization, 
+          cp.location,
+          -- Retrieve the most common or latest zone_id associated with this choke point
+          MAX(zm.zone_id) AS primary_zone_id
+        FROM choke_points cp
+        LEFT JOIN zone_metrics zm ON cp.id = zm.choke_point_id
+        GROUP BY cp.id
+        ORDER BY cp.name ASC;
+      `;
+      
+      const result = await pool.query(query);
       
       // Process database rows to transform the POINT object into a standard [lat, lng] array
       const processedRows = result.rows.map(row => ({
@@ -35,7 +51,6 @@ module.exports = (pool) => {
         location: parsePoint(row.location),
       }));
       
-      // The processedRows array now correctly includes the current_utilization field.
       res.json(processedRows);
     } catch (err) {
       console.error('Error fetching choke points:', err);

@@ -16,49 +16,86 @@
   font-size: 1.1em;
 }
 
-.choke-points-list {
-  flex: 1; /* Utilize remaining vertical space */
-  overflow-y: auto;
+.monitor-container {
+  display: flex;
+  flex-direction: row; /* Default side-by-side */
+  gap: 20px;
   padding: 10px;
+  flex: 1; /* Take up remaining height */
+  overflow-y: auto; /* Allow internal scrolling if content overflows */
 }
 
-.no-chokepoints {
-  text-align: center;
+/* Style for individual frames */
+.zone-metrics-frame,
+.choke-points-frame {
+  flex: 1; /* Both take equal space */
+  min-width: 45%;
+  background-color: #fff;
+  padding: 15px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: auto; /* Allow scrolling within the frame if content is long */
+}
+
+.monitor-container h4 {
+  margin-top: 0;
+  color: #007bff;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+  margin-bottom: 15px;
+}
+
+.note {
+  font-size: 0.8em;
   color: #6c757d;
-  font-style: italic;
+  margin-top: 10px;
+  padding-top: 5px;
+  border-top: 1px dashed #eee;
 }
 
+/* --- TABLE STYLES (Applied to both zone-metrics-table and choke-points-table) --- */
+
+.zone-metrics-table,
 .choke-points-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9em;
-  /* Set table text color for readability */
   color: #333;
 }
 
+.zone-metrics-table th,
 .choke-points-table th,
+.zone-metrics-table td,
 .choke-points-table td {
   padding: 8px 10px;
   text-align: left;
   border-bottom: 1px solid #ddd;
 }
 
+.zone-metrics-table th,
 .choke-points-table th {
   background-color: #f1f1f1;
   font-weight: bold;
-  /* Ensure header text is dark */
   color: #333;
 }
 
+.zone-metrics-table tr:hover,
 .choke-points-table tr:hover {
-  background-color: #3effff;
+  background-color: #e6f7ff; 
 }
 
 .status-indicator {
   padding: 2px 8px;
-  border-radius: 12px; /* Define pill shape */
+  border-radius: 12px;
   color: white;
   font-size: 0.8em;
   font-weight: bold;
   text-align: center;
+}
+
+/* Media query for smaller screens (stack frames vertically) */
+@media (max-width: 900px) {
+  .monitor-container {
+    flex-direction: column;
+  }
 }
