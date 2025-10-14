@@ -391,13 +391,50 @@ const io = socketIo(server, {
   }
 });
 
-// Schedule Automatic Risk Prediction to run every 10 seconds
+// --- NEW: Function to emit latest zone metrics for real-time visualization ---
+/**
+ * Fetches the absolute latest zone metric for each zone and emits them via Socket.IO.
+ * This provides a high-frequency data stream for the frontend map visualization,
+ * independent of the risk prediction cycle.
+ */
+async function emitLatestZoneMetrics() {
+  try {
+    // console.log("Emitting latest zone metrics..."); // Optional: verbose log
+    // Fetch the single most recent metric for each unique zone_id
+    const result = await pool.query(`
+      SELECT DISTINCT ON (zone_id) 
+        zone_id, density, avg_speed, flow_direction, choke_point_id, timestamp
+      FROM zone_metrics
+      ORDER BY zone_id, timestamp DESC
+    `);
+
+    if (result.rows.length > 0) {
+      // console.log(`Emitted ${result.rows.length} latest zone metrics.`); // Optional: verbose log
+      // Emit the array of latest metrics to all connected clients
+      io.emit('zone_metrics_update', result.rows);
+    } else {
+      console.log("No zone metrics found to emit.");
+    }
+  } catch (err) {
+    console.error('Error fetching/emitting latest zone metrics:', err);
+    // Optionally, emit an error event to the frontend
+    // io.emit('data_feed_error', { error: 'Failed to fetch real-time zone metrics.' });
+  }
+}
+// --- END NEW FUNCTION ---
+
+// Schedule Automatic Risk Prediction to run every 10 seconds (existing)
 const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
 
-// Handle Socket.IO connections
+// --- NEW: Schedule Latest Zone Metrics emission every 3 seconds ---
+// This provides a high-frequency data stream for visualization
+const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 3000);
+// --- END NEW INTERVAL ---
+
+// Handle Socket.IO connections (existing logic)
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
-  socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` }); // Test event
+  socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` });
   
   socket.on('disconnect', () => {
     console.log('A user disconnected:', socket.id);
@@ -409,10 +446,13 @@ server.listen(port, () => {
   console.log(`CrowdGuardian Backend server listening at http://localhost:${port}`);
 });
 
-// --- Graceful Shutdown ---
+// --- Graceful Shutdown (UPDATED) ---
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
   clearInterval(predictionInterval);
+  // --- NEW: Clear the metrics emission interval ---
+  clearInterval(metricsEmissionInterval);
+  // --- END NEW CLEAR ---
   server.close(() => {
     console.log('Server closed.');
     process.exit(0);
