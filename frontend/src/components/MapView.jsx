@@ -32,14 +32,14 @@ const MapView = () => {
 
   // State for data fetched from API and pushed via Socket.IO
   const [chokePoints, setChokePoints] = useState([]);
-  // State for REAL-TIME zone metrics (initial state is empty, populated by Socket.IO)
+  // Zone Metrics: Initial state is empty, populated by Socket.IO
   const [zoneMetrics, setZoneMetrics] = useState([]);
 
   // State for fetch status and errors
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // State for Socket.IO communication
+  // State for real-time Socket.IO communication
   const [socketMessages, setSocketMessages] = useState([]);
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [evacuationRoutes, setEvacuationRoutes] = useState({});
@@ -131,9 +131,24 @@ const MapView = () => {
         setSocketMessages(prev => [...prev, { type: 'evacuation_error', error: data.error, zone_id: data.zone_id, timestamp: new Date().toLocaleTimeString() }]);
       };
 
+      // FIX: Listener for real-time zone metrics updates with numeric parsing
       const handleZoneMetricsUpdate = (data) => {
-        // Update the zoneMetrics state with the latest data from the backend
-        setZoneMetrics(data);
+        // Parse numeric strings from DB to floats to prevent map rendering errors (NaN)
+        const parsedData = data.map(metric => ({
+          ...metric,
+          // CRITICAL FIX: Ensure coordinates are numeric
+          latitude: parseFloat(metric.latitude) || 0,
+          longitude: parseFloat(metric.longitude) || 0,
+          // Ensure metrics are numeric for toFixed() helper functions
+          density: parseFloat(metric.density) || 0,
+          avg_speed: parseFloat(metric.avg_speed) || 0,
+          flow_direction: parseInt(metric.flow_direction, 10) || 0,
+          choke_point_id: parseInt(metric.choke_point_id, 10) || null,
+          id: metric.id || metric.zone_id || Math.random(), // Ensure unique key fallback
+        }));
+        // Filter out any entries where parsing the core coordinates failed
+        const validMetrics = parsedData.filter(m => !isNaN(m.latitude) && !isNaN(m.longitude));
+        setZoneMetrics(validMetrics);
       };
 
       // Attach the listeners
@@ -271,10 +286,10 @@ const MapView = () => {
 
       {/* Render risk zones (Polygons) */}
       {riskAlerts.map((alert, index) => {
-        // Map zone ID from alert to its location coordinates
+        // Find metric to get coordinates
         const zoneMetric = zoneMetrics.find(m => m.zone_id === alert.zone_id); 
-        // CRITICAL FIX: The location array must be constructed from individual DB columns (latitude, longitude)
-        const location = zoneMetric ? [parseFloat(zoneMetric.latitude), parseFloat(zoneMetric.longitude)] : null; 
+        // Location array built from individual numeric fields from the clean zoneMetric state
+        const location = zoneMetric ? [zoneMetric.latitude, zoneMetric.longitude] : null; 
         const areaCoords = getZoneArea(alert.zone_id, location);
 
         if (areaCoords) {
@@ -304,8 +319,8 @@ const MapView = () => {
       {zoneMetrics.map((metric) => (
         <Circle
           key={metric.id}
-          // CRITICAL FIX: Access location using individual DB columns
-          center={[parseFloat(metric.latitude), parseFloat(metric.longitude)]}
+          // Access center using individual numeric fields (guaranteed number by handleMetricsUpdate)
+          center={[metric.latitude, metric.longitude]}
           radius={getCircleRadius(metric.density)}
           fillColor={getDensityColor(metric.density)}
           color="#000"
@@ -315,8 +330,8 @@ const MapView = () => {
           {!isFullscreen && <Popup>
             <div>
               <strong>Zone: {metric.zone_id}</strong><br />
-              Density: {parseFloat(metric.density).toFixed(2)} p/m²<br />
-              Avg. Speed: {parseFloat(metric.avg_speed).toFixed(2)} m/s
+              Density: {metric.density.toFixed(2)} p/m²<br />
+              Avg. Speed: {metric.avg_speed.toFixed(2)} m/s
             </div>
           </Popup>}
         </Circle>
@@ -326,7 +341,7 @@ const MapView = () => {
       {chokePoints.map((point) => (
         <Marker
           key={point.id}
-          position={point.location} // This is already processed to [lat, lng] in the chokePoints router
+          position={point.location} // Assumes location is already processed to [lat, lng] in the chokePoints router
           icon={L.divIcon({
             className: 'custom-marker',
             html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
