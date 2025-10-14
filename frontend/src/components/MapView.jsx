@@ -18,6 +18,13 @@ L.Icon.Default.mergeOptions({
 });
 
 const MapView = () => {
+  // --- NEW STATE for Fullscreen Modal ---
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const toggleFullscreen = () => {
+    setIsMapFullscreen(!isMapFullscreen);
+  };
+  // --- END NEW STATE ---
+
   // Map initialization parameters
   const center = [28.62, 77.23]; // Central Delhi
   const zoom = 12; // Zoom level for wide area visibility
@@ -42,7 +49,7 @@ const MapView = () => {
   // State for real-time risk alerts received via Socket.IO
   const [riskAlerts, setRiskAlerts] = useState([]);
 
-  // FIX 1: State changed to hold MULTIPLE evacuation routes keyed by zone_id
+  // State for evacuation routes (object keyed by zone_id)
   const [evacuationRoutes, setEvacuationRoutes] = useState({});
 
   // Ref to hold the socket instance for stable listeners
@@ -82,7 +89,7 @@ const MapView = () => {
     };
 
     fetchChokePoints();
-    const intervalId = setInterval(fetchChokePoints, 5000); 
+    const intervalId = setInterval(fetchChokePoints, 5000);
     return () => clearInterval(intervalId);
   }, []);
 
@@ -100,7 +107,7 @@ const MapView = () => {
       const handleRiskAlert = (data) => {
         const LOW_RISK_LEVELS = ['Low', 'Medium'];
 
-        // FIX 3: Clear evacuation route if risk drops for the specific zone
+        // Clear evacuation route if risk drops for the specific zone
         if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoutes[data.zone_id]) {
             setEvacuationRoutes(prevRoutes => {
                 const updatedRoutes = { ...prevRoutes };
@@ -108,7 +115,7 @@ const MapView = () => {
                 return updatedRoutes;
             });
         }
-        
+
         // Add new alert to state for Polygon rendering
         setRiskAlerts(prevAlerts => {
           const maxAlerts = 10;
@@ -127,14 +134,14 @@ const MapView = () => {
             if (dateObj instanceof Date && !isNaN(dateObj)) {
                 formattedTimestamp = dateObj.toLocaleTimeString();
             } else {
-                formattedTimestamp = timestampToUse; 
+                formattedTimestamp = timestampToUse;
             }
         }
         setSocketMessages(prev => [...prev, { type: 'risk_alert', ...data, timestamp: formattedTimestamp }]);
       };
 
       const handleEvacuationRoute = (data) => {
-        // FIX 2: Store the received route keyed by zone_id
+        // Store the received route keyed by zone_id
         setEvacuationRoutes(prevRoutes => ({
             ...prevRoutes,
             [data.zone_id]: data
@@ -170,7 +177,7 @@ const MapView = () => {
         socketRef.current = null;
       }
     };
-  }, [evacuationRoutes]); // Dependency updated to trigger re-run of listener setup only when necessary
+  }, [evacuationRoutes]); // Dependency updated
 
   // Function to determine marker color based on utilization
   const getMarkerColor = (utilization, capacity) => {
@@ -254,12 +261,93 @@ const MapView = () => {
 
   return (
     <div className="map-container">
-      <h3>Real-Time Crowd Density Map</h3>
+      {/* --- MODAL IMPLEMENTATION --- */}
+      {isMapFullscreen && (
+        <div className="fullscreen-map-overlay">
+          <div className="fullscreen-map-header">
+            <h3>Real-Time Crowd Density Map (Fullscreen)</h3>
+            <button className="fullscreen-close-btn" onClick={toggleFullscreen}>Close</button>
+          </div>
+          <MapContainer center={center} zoom={zoom} className="leaflet-map fullscreen-leaflet-map">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            {/* Render evacuation routes */}
+            {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
+              <Polyline
+                key={`evac-route-${zoneId}`}
+                positions={routeData.route_coordinates}
+                color={getEvacuationRouteColor(routeData.risk_level_that_triggered)}
+                weight={5}
+                opacity={0.8}
+                dashArray="10, 10"
+              />
+            ))}
+            {/* Render risk zones */}
+            {riskAlerts.map((alert, index) => {
+              const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
+              const location = zoneMetric ? zoneMetric.location : null;
+              const areaCoords = getZoneArea(alert.zone_id, location);
+
+              if (areaCoords) {
+                return (
+                  <Polygon
+                    key={`risk-${alert.zone_id}-${index}`}
+                    positions={areaCoords}
+                    color={getRiskZoneColor(alert.severity_level)}
+                    fillColor={getRiskZoneColor(alert.severity_level)}
+                    fillOpacity={0.3}
+                    weight={2}
+                  />
+                );
+              }
+              return null;
+            })}
+            {/* Render zone circles */}
+            {zoneMetrics.map((metric) => (
+              <Circle
+                key={metric.id}
+                center={metric.location}
+                radius={getCircleRadius(metric.density)}
+                fillColor={getDensityColor(metric.density)}
+                color="#000"
+                weight={1}
+                fillOpacity={0.5}
+              />
+            ))}
+            {/* Render choke point markers */}
+            {chokePoints.map((point) => (
+              <Marker
+                key={point.id}
+                position={point.location}
+                icon={L.divIcon({
+                  className: 'custom-marker',
+                  html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
+                  iconSize: [16, 16],
+                  iconAnchor: [8, 8],
+                })}
+              />
+            ))}
+          </MapContainer>
+        </div>
+      )}
+      {/* --- END MODAL IMPLEMENTATION --- */}
+
+      <div className="map-header-with-controls">
+        <h3>Real-Time Crowd Density Map</h3>
+        {/* --- FULLSCREEN BUTTON --- */}
+        <button className="fullscreen-toggle-btn" onClick={toggleFullscreen}>
+          {/* Fullscreen Icon using Unicode or SVG */}
+          &#x26F6; {/* Alternative: &#x1F50D; (Magnifying Glass) or &#x1F5A5; (Desktop Window) */}
+        </button>
+        {/* --- END FULLSCREEN BUTTON --- */}
+      </div>
       {/* Display Socket.IO messages for testing/visibility */}
       <div className="socket-messages">
         <h4>Real-Time Alerts:</h4>
         <ul>
-          {/* FIX: Robust timestamp parsing for riskAlerts display */}
+          {/* Robust timestamp parsing for riskAlerts display */}
           {riskAlerts.map((alert, index) => {
             let displayTimestamp = 'N/A';
             const timestampToUse = alert.timestamp || alert.generated_at;
@@ -268,7 +356,7 @@ const MapView = () => {
                 if (alertDate instanceof Date && !isNaN(alertDate)) {
                     displayTimestamp = alertDate.toLocaleTimeString();
                 } else {
-                    displayTimestamp = alertTimestampToUse;
+                    displayTimestamp = timestampToUse;
                 }
             }
             return (
@@ -277,13 +365,13 @@ const MapView = () => {
               </li>
             );
           })}
-          {/* Display evacuation route status if available */}
+          {/* Display evacuation route status */}
           {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
             <li key={`evac-status-${zoneId}`} className="evacuation-message">
               <strong>[{new Date().toLocaleTimeString()}] EVACUATION:</strong> Route calculated for {routeData.zone_id}. Distance: {routeData.distance_kms} km.
             </li>
           ))}
-          {/* Display hello message for connection confirmation */}
+          {/* Display hello message */}
           {socketMessages.find(msg => msg.type === 'hello') && (
             <li key="hello-status">
               <strong>[{socketMessages.find(msg => msg.type === 'hello').timestamp}] Status:</strong> Socket connected.
@@ -291,17 +379,17 @@ const MapView = () => {
           )}
         </ul>
       </div>
+      {/* Main Map Container */}
       <MapContainer center={center} zoom={zoom} className="leaflet-map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        
-        {/* FIX 4: Render MULTIPLE evacuation routes from the evacuationRoutes object */}
+        {/* Render evacuation routes */}
         {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
           <Polyline
             key={`evac-route-${zoneId}`}
-            positions={routeData.route_coordinates} // Array of [lat, lng] pairs
+            positions={routeData.route_coordinates}
             color={getEvacuationRouteColor(routeData.risk_level_that_triggered)}
             weight={5}
             opacity={0.8}
@@ -318,8 +406,7 @@ const MapView = () => {
             </Popup>
           </Polyline>
         ))}
-
-        {/* Render risk zones as Polygons based on received alerts */}
+        {/* Render risk zones */}
         {riskAlerts.map((alert, index) => {
           const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
           const location = zoneMetric ? zoneMetric.location : null;
@@ -347,8 +434,7 @@ const MapView = () => {
           }
           return null;
         })}
-        
-        {/* Render circles for each zone based on simulated density */}
+        {/* Render zone circles */}
         {zoneMetrics.map((metric) => (
           <Circle
             key={metric.id}
@@ -368,15 +454,13 @@ const MapView = () => {
             </Popup>
           </Circle>
         ))}
-        
-        {/* Render markers for each choke point fetched from backend */}
+        {/* Render choke point markers */}
         {chokePoints.map((point) => (
           <Marker
             key={point.id}
             position={point.location}
             icon={L.divIcon({
               className: 'custom-marker',
-              // Use the simplified getMarkerColor function
               html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
               iconSize: [16, 16],
               iconAnchor: [8, 8],

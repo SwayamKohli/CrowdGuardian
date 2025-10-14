@@ -350,3 +350,128 @@
     min-height: 350px;
   }
 }
+
+
+/* --- STYLES FOR FULLSCREEN MODAL --- */
+
+/* Fullscreen Overlay - Covers the entire viewport */
+.fullscreen-map-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent background */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000; /* High z-index to appear on top of other elements */
+  padding: 20px; /* Add some padding around the map */
+  box-sizing: border-box;
+}
+
+/* Header inside the fullscreen modal */
+.fullscreen-map-header {
+  width: 100%;
+  max-width: 1200px; /* Match or be slightly less than the map width */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px 15px;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color: #ffc107;
+  border-left: 4px solid #ff6b35;
+}
+
+.fullscreen-map-header h3 {
+  margin: 0;
+  font-size: 1.4em;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
+}
+
+/* Close Button inside the fullscreen modal */
+.fullscreen-close-btn {
+  background: linear-gradient(135deg, #ff6b35, #ff8555);
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.fullscreen-close-btn:hover {
+  background: linear-gradient(135deg, #ff8555, #ff9d76);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.5);
+  transform: translateY(-2px);
+}
+
+.fullscreen-close-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(255, 107, 53, 0.3);
+}
+
+/* Fullscreen Leaflet Map Container */
+.fullscreen-leaflet-map {
+  width: 100%;
+  max-width: 1200px; /* Set a max-width for the map */
+  height: 80vh; /* Use viewport height for responsiveness */
+  min-height: 500px; /* Ensure a minimum height */
+  border: 2px solid rgba(255, 193, 7, 0.5);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  z-index: 10001; /* Slightly higher than overlay */
+}
+
+/* Adjust map elements inside the fullscreen map */
+.fullscreen-leaflet-map .leaflet-popup-content-wrapper {
+  background: rgba(20, 25, 40, 0.98); /* Slightly darker for fullscreen */
+}
+
+/* --- NEW STYLES FOR MAIN MAP CONTROLS --- */
+
+/* Container for the main map header and controls */
+.map-header-with-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* Fullscreen Toggle Button (Main View) */
+.fullscreen-toggle-btn {
+  background: linear-gradient(135deg, #007bff, #0056b3); /* Blue gradient */
+  color: white;
+  border: none;
+  padding: 8px 12px; /* Adjust padding */
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.2em; /* Make icon larger */
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-toggle-btn:hover {
+  background: linear-gradient(135deg, #0056b3, #004085); /* Darker blue on hover */
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.fullscreen-toggle-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 123, 255, 0.3);
+}
+
+/* ---  NEW STYLES --- */
