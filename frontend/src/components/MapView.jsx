@@ -1,4 +1,4 @@
-// frontend/src/components/MapView.jsx
+// src/components/MapView.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -21,39 +21,40 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
   const zoom = 12;
 
   const [chokePoints, setChokePoints] = useState([]);
-  const [zoneMetrics, setZoneMetrics] = useState([
-    { id: 'Z1_CP', zoneId: 'Z1', location: [28.6316, 77.2180], density: 2.5, avgSpeed: 0.9, flowDirection: 90, description: 'Zone Z1 (Connaught Place Area)' },
-    { id: 'Z2_IG', zoneId: 'Z2', location: [28.6129, 77.2274], density: 4.0, avgSpeed: 0.7, flowDirection: 180, description: 'Zone Z2 (India Gate Area)' },
-    { id: 'Z3_LT', zoneId: 'Z3', location: [28.5535, 77.2588], density: 1.8, avgSpeed: 1.2, flowDirection: 0, description: 'Zone Z3 (Lotus Temple Vicinity)' },
-    { id: 'Z4_RF', zoneId: 'Z4', location: [28.6575, 77.2410], density: 3.2, avgSpeed: 0.8, flowDirection: 270, description: 'Zone Z4 (Red Fort Area)' },
-  ]);
-
+  const [zoneMetrics, setZoneMetrics] = useState([]); // Now empty — will fetch from API
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [socketMessages, setSocketMessages] = useState([]);
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [evacuationRoutes, setEvacuationRoutes] = useState({});
-
-  // --- NEW V1.5 FEATURE: State for Fullscreen Modal ---
-  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
-  const toggleFullscreen = () => setIsMapFullscreen(!isMapFullscreen);
-  // --- END NEW V1.5 FEATURE ---
-
   const socketRef = useRef(null);
 
+  // Fetch zone metrics (with latitude/longitude)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setZoneMetrics(prevMetrics =>
-        prevMetrics.map(metric => ({
-          ...metric,
-          density: Math.max(0, metric.density + (Math.random() * 0.5 - 0.25)),
-          avgSpeed: Math.max(0, metric.avgSpeed + (Math.random() * 0.1 - 0.05))
-        }))
-      );
-    }, 3000);
-    return () => clearInterval(interval);
+    const fetchZoneMetrics = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/api/zone-metrics?limit=100');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        const latestPerZone = {};
+        data.forEach(metric => {
+          if (!latestPerZone[metric.zone_id] || new Date(metric.timestamp) > new Date(latestPerZone[metric.zone_id].timestamp)) {
+            latestPerZone[metric.zone_id] = metric;
+          }
+        });
+        setZoneMetrics(Object.values(latestPerZone));
+      } catch (err) {
+        console.error('Error fetching zone metrics:', err);
+        setError(err.message);
+      }
+    };
+
+    fetchZoneMetrics();
+    const intervalId = setInterval(fetchZoneMetrics, 5000);
+    return () => clearInterval(intervalId);
   }, []);
 
+  // Fetch choke points
   useEffect(() => {
     const fetchChokePoints = async () => {
       try {
@@ -72,94 +73,54 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
         setLoading(false);
       }
     };
-
     fetchChokePoints();
     const intervalId = setInterval(fetchChokePoints, 5000);
     return () => clearInterval(intervalId);
   }, []);
 
+  // Socket logic
   useEffect(() => {
     if (!socketRef.current) {
-      const newSocket = io('http://localhost:3000');
+      const newSocket = io('http://localhost:3000', {
+        transports: ['websocket'] // Prevent blinking
+      });
       socketRef.current = newSocket;
 
-      const handleHello = (data) => {
-        setSocketMessages(prev => [...prev, { type: 'hello', ...data, timestamp: new Date().toLocaleTimeString() }]);
-      };
-
       const handleRiskAlert = (data) => {
-        const LOW_RISK_LEVELS = ['Low', 'Medium'];
-        if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoutes[data.zone_id]) {
-            setEvacuationRoutes(prevRoutes => {
-                const updatedRoutes = { ...prevRoutes };
-                delete updatedRoutes[data.zone_id];
-                return updatedRoutes;
-            });
-        }
-
-        setRiskAlerts(prevAlerts => {
-          const maxAlerts = 10;
-          let updatedAlerts = [...prevAlerts, data];
-          if (updatedAlerts.length > maxAlerts) {
-            updatedAlerts = updatedAlerts.slice(-maxAlerts);
-          }
-          return updatedAlerts;
+        setRiskAlerts(prev => {
+          const max = 10;
+          const updated = [...prev, data];
+          return updated.length > max ? updated.slice(-max) : updated;
         });
-
-        let formattedTimestamp = 'N/A';
-        const timestampToUse = data.timestamp || data.generated_at;
-        if (timestampToUse) {
-            const dateObj = new Date(timestampToUse);
-            if (dateObj instanceof Date && !isNaN(dateObj)) {
-                formattedTimestamp = dateObj.toLocaleTimeString();
-            } else {
-                formattedTimestamp = timestampToUse;
-            }
-        }
-        setSocketMessages(prev => [...prev, { type: 'risk_alert', ...data, timestamp: formattedTimestamp }]);
       };
 
       const handleEvacuationRoute = (data) => {
-        setEvacuationRoutes(prevRoutes => ({
-            ...prevRoutes,
-            [data.zone_id]: data
-        }));
-        setSocketMessages(prev => [...prev, { type: 'evacuation_route', ...data, timestamp: new Date().toLocaleTimeString() }]);
+        setEvacuationRoutes(prev => ({ ...prev, [data.zone_id]: data }));
       };
 
-      const handleEvacuationError = (data) => {
-        setSocketMessages(prev => [...prev, { type: 'evacuation_error', error: data.error, zone_id: data.zone_id, timestamp: new Date().toLocaleTimeString() }]);
-      };
-
-      newSocket.on('server_hello', handleHello);
       newSocket.on('risk_alert_generated', handleRiskAlert);
       newSocket.on('evacuation_route_calculated', handleEvacuationRoute);
-      newSocket.on('evacuation_error', handleEvacuationError);
 
-      socketRef.current.handleHello = handleHello;
       socketRef.current.handleRiskAlert = handleRiskAlert;
       socketRef.current.handleEvacuationRoute = handleEvacuationRoute;
-      socketRef.current.handleEvacuationError = handleEvacuationError;
     }
 
     return () => {
       if (socketRef.current) {
-        socketRef.current.off('server_hello', socketRef.current.handleHello);
         socketRef.current.off('risk_alert_generated', socketRef.current.handleRiskAlert);
         socketRef.current.off('evacuation_route_calculated', socketRef.current.handleEvacuationRoute);
-        socketRef.current.off('evacuation_error', socketRef.current.handleEvacuationError);
         socketRef.current.close();
         socketRef.current = null;
       }
     };
-  }, [evacuationRoutes]);
+  }, []);
 
   const getMarkerColor = (utilization, capacity) => {
     const util = utilization || 0;
     const cap = capacity || 100;
-    const percentage = (util / cap) * 100;
-    if (percentage > 80) return '#dc3545';
-    if (percentage > 60) return '#ffc107';
+    const pct = (util / cap) * 100;
+    if (pct > 80) return '#dc3545';
+    if (pct > 60) return '#ffc107';
     return '#28a745';
   };
 
@@ -170,305 +131,158 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
     return '#00FF00';
   };
 
-  const getCircleRadius = (density) => {
-    return 80 + (density * 30);
-  };
+  const getCircleRadius = (density) => 80 + (density * 30);
 
   const getRiskZoneColor = (riskLevel) => {
     switch (riskLevel?.toLowerCase()) {
-      case 'critical':
-        return '#8B0000';
-      case 'high':
-        return '#FF0000';
-      case 'medium':
-        return '#FFA500';
-      case 'low':
-        return '#FFFF00';
-      default:
-        return '#6c757d';
+      case 'critical': return '#8B0000';
+      case 'high': return '#FF0000';
+      case 'medium': return '#FFA500';
+      case 'low': return '#FFFF00';
+      default: return '#6c757d';
     }
   };
 
-  const getEvacuationRouteColor = (riskLevelThatTriggered) => {
-    switch (riskLevelThatTriggered?.toLowerCase()) {
-      case 'critical':
-        return '#FF4500';
-      case 'high':
-        return '#FF8C00';
-      default:
-        return '#0000FF';
+  const getEvacuationRouteColor = (riskLevel) => {
+    switch (riskLevel?.toLowerCase()) {
+      case 'critical': return '#FF4500';
+      case 'high': return '#FF8C00';
+      default: return '#0000FF';
     }
   };
 
   const getZoneArea = (zoneId, location) => {
+    if (!location) return null;
     const offset = 0.002;
-    if (location && Array.isArray(location) && location.length === 2) {
-      const [lat, lng] = location;
-      return [
-        [lat - offset, lng - offset],
-        [lat - offset, lng + offset],
-        [lat + offset, lng + offset],
-        [lat + offset, lng - offset]
-      ];
+    const [lat, lng] = location;
+    return [
+      [lat - offset, lng - offset],
+      [lat - offset, lng + offset],
+      [lat + offset, lng + offset],
+      [lat + offset, lng - offset]
+    ];
+  };
+
+  if (loading) return <div className="map-container"><p>Loading...</p></div>;
+  if (error) return <div className="map-container"><p>Error: {error}</p></div>;
+
+  // ✅ Helper: Get [lat, lng] from zoneMetrics by zone_id
+  const getLocationByZoneId = (zoneId) => {
+    const metric = zoneMetrics.find(m => m.zone_id === zoneId);
+    if (metric && metric.latitude != null && metric.longitude != null) {
+      const lat = parseFloat(metric.latitude);
+      const lng = parseFloat(metric.longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return [lat, lng];
+      }
     }
     return null;
   };
 
-  if (loading) {
-    return <div className="map-container"><p>Loading map and choke points...</p></div>;
-  }
-
-  if (error) {
-    return <div className="map-container"><p>Error loading data: {error}</p></div>;
-  }
-
   return (
     <div className="map-container">
-      {/* --- NEW V1.5 FEATURE: Fullscreen Modal Overlay --- */}
-      {isMapFullscreen && (
-        <div className="fullscreen-map-overlay">
-          <div className="fullscreen-map-header">
-            <h3>Real-Time Crowd Density Map (Fullscreen)</h3>
-            <button className="fullscreen-close-btn" onClick={toggleFullscreen}>Close</button>
-          </div>
-          <MapContainer center={center} zoom={zoom} className="leaflet-map fullscreen-leaflet-map">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
-              <Polyline
-                key={`evac-route-${zoneId}-fs`}
-                positions={routeData.route_coordinates}
-                color={getEvacuationRouteColor(routeData.risk_level_that_triggered)}
-                weight={7}
-                opacity={0.9}
-                dashArray="10, 10"
-              >
-                <Popup>
-                  <div>
-                    <strong>Evacuation Route</strong><br />
-                    Zone: {routeData.zone_id}<br />
-                    Triggered by Risk: {routeData.risk_level_that_triggered}<br />
-                    Distance: {routeData.distance_kms} km<br />
-                    Calculated at: {new Date(routeData.calculated_at).toLocaleString()}
-                  </div>
-                </Popup>
-              </Polyline>
-            ))}
-            {riskAlerts.map((alert, index) => {
-              const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
-              const location = zoneMetric ? zoneMetric.location : null;
-              const areaCoords = getZoneArea(alert.zone_id, location);
-
-              if (areaCoords) {
-                return (
-                  <Polygon
-                    key={`risk-${alert.zone_id}-${index}-fs`}
-                    positions={areaCoords}
-                    color={getRiskZoneColor(alert.severity_level)}
-                    fillColor={getRiskZoneColor(alert.severity_level)}
-                    fillOpacity={0.4}
-                    weight={2}
-                  >
-                    <Popup>
-                      <div>
-                        <strong>Risk Alert: {alert.severity_level}</strong><br />
-                        Zone: {alert.zone_id}<br />
-                        Predicted at: {new Date(alert.timestamp || alert.generated_at).toLocaleString()}
-                      </div>
-                    </Popup>
-                  </Polygon>
-                );
-              }
-              return null;
-            })}
-            {zoneMetrics.map((metric) => (
-              <Circle
-                key={`${metric.id}-fs`}
-                center={metric.location}
-                radius={getCircleRadius(metric.density)}
-                fillColor={getDensityColor(metric.density)}
-                color="#000"
-                weight={1}
-                fillOpacity={0.5}
-              >
-                <Popup>
-                  <div>
-                    <strong>Zone: {metric.zoneId}</strong><br />
-                    Density: {metric.density.toFixed(2)} p/m²<br />
-                    Avg. Speed: {metric.avgSpeed.toFixed(2)} m/s
-                  </div>
-                </Popup>
-              </Circle>
-            ))}
-            {chokePoints.map((point) => (
-              <Marker
-                key={`${point.id}-fs`}
-                position={point.location}
-                icon={L.divIcon({
-                  className: 'custom-marker',
-                  html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
-                  iconSize: [16, 16],
-                  iconAnchor: [8, 8],
-                })}
-              >
-                <Popup>
-                  <div>
-                    <strong>{point.name}</strong><br />
-                    Status: {point.current_utilization || 'N/A'}/{point.capacity || 'N/A'} ({point.capacity ? Math.round(((point.current_utilization || 0) / point.capacity) * 100) : 0}%)
-                    <br />
-                    {point.description}
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-        </div>
-      )}
-      {/* --- END NEW V1.5 FEATURE --- */}
-
-      <div className="map-header-with-controls">
-        <h3>Real-Time Crowd Density Map</h3>
-        {/* --- NEW V1.5 FEATURE: Fullscreen Toggle Button --- */}
-        <button className="fullscreen-toggle-btn" onClick={toggleFullscreen}>&#x26F6;</button>
-        {/* --- END NEW V1.5 FEATURE --- */}
-      </div>
-
+      <h3>Real-Time Crowd Density Map</h3>
       <div className="socket-messages">
         <h4>Real-Time Alerts:</h4>
         <ul>
-          {riskAlerts.map((alert, index) => {
-            let displayTimestamp = 'N/A';
-            const timestampToUse = alert.timestamp || alert.generated_at;
-            if (timestampToUse) {
-                const alertDate = new Date(timestampToUse);
-                if (alertDate instanceof Date && !isNaN(alertDate)) {
-                    displayTimestamp = alertDate.toLocaleTimeString();
-                } else {
-                    displayTimestamp = timestampToUse;
-                }
-            }
-            return (
-              <li key={`alert-${index}`}>
-                <strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
-              </li>
-            );
-          })}
-          {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
-            <li key={`evac-status-${zoneId}`} className="evacuation-message">
-              <strong>[{new Date().toLocaleTimeString()}] EVACUATION:</strong> Route calculated for {routeData.zone_id}. Distance: {routeData.distance_kms} km.
+          {riskAlerts.map((alert, i) => (
+            <li key={i}>
+              <strong>[{new Date().toLocaleTimeString()}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
             </li>
           ))}
-          {socketMessages.find(msg => msg.type === 'hello') && (
-            <li key="hello-status">
-              <strong>[{socketMessages.find(msg => msg.type === 'hello').timestamp}] Status:</strong> Socket connected.
-            </li>
-          )}
         </ul>
       </div>
 
-      {/* Main Map Container */}
       <MapContainer center={center} zoom={zoom} className="leaflet-map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
-          <Polyline
-            key={`evac-route-${zoneId}`}
-            positions={routeData.route_coordinates}
-            color={getEvacuationRouteColor(routeData.risk_level_that_triggered)}
-            weight={5}
-            opacity={0.8}
-            dashArray="10, 10"
-          >
-            <Popup>
-              <div>
-                <strong>Evacuation Route</strong><br />
-                Zone: {routeData.zone_id}<br />
-                Triggered by Risk: {routeData.risk_level_that_triggered}<br />
-                Distance: {routeData.distance_kms} km<br />
-                Calculated at: {new Date(routeData.calculated_at).toLocaleString()}
-              </div>
-            </Popup>
-          </Polyline>
-        ))}
-        {riskAlerts.map((alert, index) => {
-          const zoneMetric = zoneMetrics.find(m => m.zoneId === alert.zone_id);
-          const location = zoneMetric ? zoneMetric.location : null;
-          const areaCoords = getZoneArea(alert.zone_id, location);
 
-          if (areaCoords) {
-            return (
-              <Polygon
-                key={`risk-${alert.zone_id}-${index}`}
-                positions={areaCoords}
-                color={getRiskZoneColor(alert.severity_level)}
-                fillColor={getRiskZoneColor(alert.severity_level)}
-                fillOpacity={0.3}
-                weight={2}
-                // --- V1.5 FEATURE: Add onClick handler for dynamic linking ---
-                eventHandlers={{
-                  click: (e) => {
-                    console.log(`MapView: Risk zone ${alert.zone_id} clicked.`);
-                    if (setSelectedZoneId) setSelectedZoneId(alert.zone_id);
-                  },
-                }}
-                // --- END V1.5 FEATURE ---
-              >
-                <Popup>
-                  <div>
-                    <strong>Risk Alert: {alert.severity_level}</strong><br />
-                    Zone: {alert.zone_id}<br />
-                    Predicted at: {new Date(alert.timestamp || alert.generated_at).toLocaleString()}
-                  </div>
-                </Popup>
-              </Polygon>
-            );
+        {/* Evacuation Routes */}
+        {Object.entries(evacuationRoutes).map(([zoneId, route]) => {
+          let coords = [];
+          try {
+            coords = route.path_coordinates ? JSON.parse(route.path_coordinates) : [];
+          } catch (e) {
+            console.warn('Invalid route coordinates');
           }
-          return null;
+          return (
+            <Polyline
+              key={`route-${zoneId}`}
+              positions={coords}
+              color={getEvacuationRouteColor(route.risk_level_that_triggered)}
+              weight={5}
+              opacity={0.8}
+              dashArray="10,10"
+            />
+          );
         })}
-        {zoneMetrics.map((metric) => (
-          <Circle
-            key={metric.id}
-            center={metric.location}
-            radius={getCircleRadius(metric.density)}
-            fillColor={getDensityColor(metric.density)}
-            color="#000"
-            weight={1}
-            fillOpacity={0.5}
-          >
-            <Popup>
-              <div>
-                <strong>Zone: {metric.zoneId}</strong><br />
-                Density: {metric.density.toFixed(2)} p/m²<br />
-                Avg. Speed: {metric.avgSpeed.toFixed(2)} m/s
-              </div>
-            </Popup>
-          </Circle>
-        ))}
-        {chokePoints.map((point) => (
-          <Marker
-            key={point.id}
-            position={point.location}
-            icon={L.divIcon({
-              className: 'custom-marker',
-              html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
-              iconSize: [16, 16],
-              iconAnchor: [8, 8],
-            })}
-          >
-            <Popup>
-              <div>
+
+        {/* Risk Alert Polygons */}
+        {riskAlerts.map((alert, i) => {
+          const location = getLocationByZoneId(alert.zone_id);
+          const area = getZoneArea(alert.zone_id, location);
+          if (!area) return null;
+          return (
+            <Polygon
+              key={`poly-${alert.zone_id}-${i}`}
+              positions={area}
+              color={getRiskZoneColor(alert.severity_level)}
+              fillColor={getRiskZoneColor(alert.severity_level)}
+              fillOpacity={0.3}
+              weight={2}
+              eventHandlers={{
+                click: () => setSelectedZoneId && setSelectedZoneId(alert.zone_id)
+              }}
+            />
+          );
+        })}
+
+        {/* Zone Circles — ✅ USE latitude/longitude */}
+        {zoneMetrics.map((metric) => {
+          const lat = parseFloat(metric.latitude);
+          const lng = parseFloat(metric.longitude);
+          if (isNaN(lat) || isNaN(lng)) return null;
+          return (
+            <Circle
+              key={metric.zone_id}
+              center={[lat, lng]}
+              radius={getCircleRadius(parseFloat(metric.density) || 0)}
+              fillColor={getDensityColor(parseFloat(metric.density) || 0)}
+              color="#000"
+              weight={1}
+              fillOpacity={0.5}
+            >
+              <Popup>
+                <strong>Zone: {metric.zone_id}</strong><br />
+                Density: {parseFloat(metric.density).toFixed(2)} p/m²
+              </Popup>
+            </Circle>
+          );
+        })}
+
+        {/* Choke Point Markers */}
+        {chokePoints.map((point) => {
+          if (!point.location) return null;
+          return (
+            <Marker
+              key={point.id}
+              position={point.location}
+              icon={L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="background-color: ${getMarkerColor(point.current_utilization, point.capacity)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+              })}
+            >
+              <Popup>
                 <strong>{point.name}</strong><br />
-                Status: {point.current_utilization || 'N/A'}/{point.capacity || 'N/A'} ({point.capacity ? Math.round(((point.current_utilization || 0) / point.capacity) * 100) : 0}%)
-                <br />
-                {point.description}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+                {point.current_utilization}/{point.capacity}
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
     </div>
   );

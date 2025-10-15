@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import './AlertsPanel.css';
 
-// Helper function to format ALERT_TYPE strings (e.g., CHOKE_POINT_ALERT -> Choke Point Alert)
 const formatAlertType = (typeString) => {
   if (!typeString) return 'N/A';
   return typeString
@@ -12,18 +12,31 @@ const formatAlertType = (typeString) => {
     .join(' ');
 };
 
-const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept props
+const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId: externalSetSelectedZoneId }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlZone = searchParams.get('zone');
+
+  const [localSelectedZoneId, setLocalSelectedZoneId] = useState(urlZone || null);
+  const selectedZoneId = externalSelectedZoneId !== undefined ? externalSelectedZoneId : localSelectedZoneId;
+  const setSelectedZoneId = externalSetSelectedZoneId || ((zoneId) => {
+    setLocalSelectedZoneId(zoneId);
+    if (zoneId) {
+      setSearchParams({ zone: zoneId });
+    } else {
+      setSearchParams({});
+    }
+  });
+
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch alerts from backend periodically
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('http://localhost:3000/api/alerts?limit=20');
+        const response = await fetch('http://localhost:3000/api/alerts?limit=50');
         if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
         const data = await response.json();
         setAlerts(data);
@@ -34,7 +47,6 @@ const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept p
         setLoading(false);
       }
     };
-
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 30000);
     return () => clearInterval(interval);
@@ -58,12 +70,11 @@ const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept p
     }
   };
 
-  // --- V1.5 FEATURE: Clear zone filter ---
   const clearZoneFilter = () => {
-    if (setSelectedZoneId) setSelectedZoneId(null);
+    setSelectedZoneId(null);
   };
 
-  // --- V1.5 FEATURE: Filter alerts by selectedZoneId ---
+  // Filter alerts by selectedZoneId (now possible since `zone_id` exists in alerts table)
   const filteredAlerts = selectedZoneId
     ? alerts.filter(alert => alert.zone_id === selectedZoneId)
     : alerts;
@@ -76,7 +87,6 @@ const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept p
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="alerts-panel">
@@ -89,8 +99,6 @@ const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept p
   return (
     <div className="alerts-panel">
       <h3>Alerts & Notifications</h3>
-
-      {/* V1.5: Show filter info and clear button */}
       {selectedZoneId && (
         <div className="filter-info">
           <p>
@@ -101,7 +109,6 @@ const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept p
           </p>
         </div>
       )}
-
       <div className="alerts-list">
         {filteredAlerts.length === 0 ? (
           <p className="no-alerts">No alerts at this time.</p>

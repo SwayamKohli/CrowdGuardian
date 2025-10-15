@@ -143,14 +143,26 @@ const EVACUATION_TRIGGER_LEVELS = ['High', 'Critical'];
 
 // --- UPDATED ZONE COORDINATE MAPPING (actual zone_ids) ---
 const ZONE_COORDINATE_MAPPING = {
-  'Z1_CP': { lat: 28.6316, lng: 77.2180 }, // Connaught Place
-  'Z2_IG': { lat: 28.6129, lng: 77.2274 }, // India Gate
-  'Z3_LT': { lat: 28.5535, lng: 77.2588 }, // Lotus Temple
-  'Z4_RF': { lat: 28.6562, lng: 77.2410 }, // Red Fort
-  'Z5_HK': { lat: 28.5530, lng: 77.2090 }, // Hauz Khas
-  'Z6_SF': { lat: 28.5520, lng: 77.1620 }, // Siri Fort
-  'Z7_SCW': { lat: 28.5355, lng: 77.1450 }, // Select Citywalk
-  'Z8_QM': { lat: 28.5285, lng: 77.1372 }, // Qutub Minar
+  'Z01_CP': { lat: 28.6316, lng: 77.2180 },
+  'Z02_IG': { lat: 28.6129, lng: 77.2274 },
+  'Z03_LT': { lat: 28.5535, lng: 77.2588 },
+  'Z04_RF': { lat: 28.6562, lng: 77.2410 },
+  'Z05_HK': { lat: 28.5530, lng: 77.2090 },
+  'Z06_SF': { lat: 28.5520, lng: 77.1950 },
+  'Z07_SCW': { lat: 28.5355, lng: 77.2405 },
+  'Z08_QM': { lat: 28.5285, lng: 77.1372 },
+  'Z09_KB': { lat: 28.6475, lng: 77.1950 },
+  'Z10_IGI': { lat: 28.5663, lng: 77.1009 },
+  'Z11_DWK': { lat: 28.5833, lng: 77.0425 },
+  'Z12_AKS': { lat: 28.6140, lng: 77.2764 },
+  'Z13_NDA': { lat: 28.5770, lng: 77.3235 },
+  'Z14_AVB': { lat: 28.6465, lng: 77.3190 },
+  'Z15_RHI': { lat: 28.7300, lng: 77.1105 },
+  'Z16_NSP': { lat: 28.6942, lng: 77.1420 },
+  'Z17_CC': { lat: 28.6565, lng: 77.2300 },
+  'Z18_LJN': { lat: 28.5700, lng: 77.2340 },
+  'Z19_DK': { lat: 28.5900, lng: 77.1400 },
+  'Z20_DU': { lat: 28.6872, lng: 77.2084 },
 };
 
 // Process risk per zone
@@ -225,7 +237,7 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
             type: 'EVACUATION_ROUTE_CALCULATED',
             zone_id: zoneId,
             risk_level_that_triggered: predictionResult,
-            route_coordinates: evacResult.route_coordinates,
+            path_coordinates: JSON.stringify(evacResult.route_coordinates),
             distance_kms: evacResult.distance_kms,
             start_point: evacResult.start_point,
             end_point: evacResult.end_point,
@@ -283,10 +295,10 @@ async function emitLatestZoneMetrics() {
         zm.flow_direction,
         zm.choke_point_id,
         zm.timestamp,
-        zp.latitude AS latitude,
-        zp.longitude AS longitude
+        zm.latitude,
+        zm.longitude
       FROM zone_metrics zm
-      JOIN choke_points zp ON zm.choke_point_id = zp.id
+      WHERE zm.latitude IS NOT NULL AND zm.longitude IS NOT NULL
       ORDER BY zm.zone_id, zm.timestamp DESC
     `);
     if (result.rows.length) io.emit('zone_metrics_update', result.rows);
