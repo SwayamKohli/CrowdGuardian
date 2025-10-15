@@ -1,28 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import './App.css'; // Import global styles
-import Header from './components/layout/Header'; // Import Header
-import Sidebar from './components/layout/Sidebar'; // Import Sidebar
-import MainContent from './components/layout/MainContent'; // Import MainContent
+import React, { useState } from 'react';
+import './App.css';
+import Header from './components/layout/Header';
+import Sidebar from './components/layout/Sidebar';
+import MainContent from './components/layout/MainContent';
+// --- NEW V1.5 FEATURE: Import for Fullscreen Map Route ---
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'; // Import Router, Routes, Route
+import FullscreenMapView from './components/FullscreenMapView'; // Import the new component
+// --- END NEW V1.5 FEATURE ---
 
 function App() {
-  // State to manage the active navigation item (Sidebar)
-  const [activeItem, setActiveItem] = useState('dashboard'); // Default to 'dashboard'
+  const [activeItem, setActiveItem] = useState('dashboard');
+  const [selectedZoneId, setSelectedZoneId] = useState(null);
 
-  // --- NEW V1.5 FEATURE: State for Dynamic Linking between Map and Alerts ---
-  // State to manage the selected zone ID for filtering alerts
-  const [selectedZoneId, setSelectedZoneId] = useState(null); // Default to null (show all alerts)
+  // --- NEW V1.5 FEATURE: State for Persistent Socket Messages ---
+  const [persistentSocketMessages, setPersistentSocketMessages] = useState([]);
   // --- END NEW V1.5 FEATURE ---
 
   return (
-    <div id="root"> {/* Use the id from App.css */}
-      <Header />
-      <div className="app-container"> {/* Container for sidebar and main content */}
-        {/* Pass activeItem and setActiveItem to Sidebar */}
-        <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} />
-        {/* Pass activeItem (renamed as activeView for MainContent), selectedZoneId, and setSelectedZoneId to MainContent */}
-        <MainContent activeView={activeItem} selectedZoneId={selectedZoneId} setSelectedZoneId={setSelectedZoneId} />
+    // --- NEW V1.5 FEATURE: Wrap App with Router ---
+    <Router>
+      <div id="root">
+        <Header />
+        {/* Use Routes to define different page views */}
+        <Routes>
+          {/* Main application layout with sidebar and dynamic content */}
+          <Route
+            path="/"
+            element={
+              <div className="app-container">
+                <Sidebar activeItem={activeItem} setActiveItem={setActiveItem} />
+                {/* Pass the new persistent state and setter */}
+                <MainContent
+                  activeView={activeItem}
+                  selectedZoneId={selectedZoneId}
+                  setSelectedZoneId={setSelectedZoneId}
+                  persistentSocketMessages={persistentSocketMessages}
+                  setPersistentSocketMessages={setPersistentSocketMessages}
+                />
+              </div>
+            }
+          />
+          {/* Dedicated fullscreen map route */}
+          <Route
+            path="/map-fullscreen"
+            element={
+              // Pass the persistent state and setter to the fullscreen map as well
+              <FullscreenMapView
+                selectedZoneId={selectedZoneId}
+                setSelectedZoneId={setSelectedZoneId}
+                persistentSocketMessages={persistentSocketMessages}
+                setPersistentSocketMessages={setPersistentSocketMessages}
+              />
+            }
+          />
+        </Routes>
       </div>
-    </div>
+    </Router>
+    // --- END NEW V1.5 FEATURE ---
   );
 }
 

@@ -7,25 +7,23 @@ import ChokePointMonitor from '../../components/ChokePointMonitor';
 import HistoricalAnalytics from '../../components/HistoricalAnalytics';
 // import EvacuationPlanner from '../../components/EvacuationPlanner'; // Import when created
 
-// Accept activeView, selectedZoneId, and setSelectedZoneId as props
-const MainContent = ({ activeView, selectedZoneId, setSelectedZoneId }) => {
+// Accept activeView as a prop
+const MainContent = ({ activeView }) => {
 
   // Function to render the correct component based on activeView
   const renderActiveComponent = () => {
     switch (activeView) {
       case 'map':
-        // Pass props for dynamic linking
-        return <MapView selectedZoneId={selectedZoneId} setSelectedZoneId={setSelectedZoneId} />;
+        return <MapView />;
       case 'alerts':
-        // Pass props for dynamic linking
-        return <AlertsPanel selectedZoneId={selectedZoneId} setSelectedZoneId={setSelectedZoneId} />;
+        return <AlertsPanel />;
       case 'chokepoints':
         return <ChokePointMonitor />;
       case 'analytics':
         return <HistoricalAnalytics />;
       // case 'evacuation': // Add case when EvacuationPlanner is ready
       //   return <EvacuationPlanner />;
-      case 'dashboard': // Default or specific dashboard view
+      case 'dashboard': // Specific dashboard view
       default:
         return (
           <div className="dashboard-container">
