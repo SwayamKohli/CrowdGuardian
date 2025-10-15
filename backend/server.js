@@ -322,20 +322,27 @@ async function simulateLiveCrowdData() {
     const chokePoints = chokeResult.rows;
 
     for (const zone of zones) {
+      // Skip zones without fixed coordinates
+      const coord = ZONE_COORDINATE_MAPPING[zone.zone_id];
+      if (!coord) continue;
+
       const baseDensity = Math.random() * 3 + 2; // 2–5
       const variation = (Math.random() - 0.5) * 1.5; // ±0.75
       const density = Math.max(0.5, Math.min(6.0, baseDensity + variation));
       const avgSpeed = Math.max(0.1, 2.0 - (density * 0.3)); // slower when dense
 
       await pool.query(`
-        INSERT INTO zone_metrics (zone_id, density, avg_speed, flow_direction, choke_point_id, description)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO zone_metrics 
+          (zone_id, density, avg_speed, flow_direction, choke_point_id, latitude, longitude, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
         zone.zone_id,
         density.toFixed(2),
         avgSpeed.toFixed(2),
         Math.floor(Math.random() * 360),
         zone.choke_point_id,
+        coord.lat,
+        coord.lng,
         `${zone.zone_id} Simulated Update`
       ]);
     }
