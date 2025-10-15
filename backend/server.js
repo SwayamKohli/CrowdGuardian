@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const { Pool } = require('pg');
 
-// Initialize PostgreSQL connection pool using environment variables
+// Initialize PostgreSQL connection pool
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
@@ -16,48 +16,37 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'your_strong_app_password',
 });
 
-// Verify database connection upon startup
+// Verify DB connection
 pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Database connection error:', err.stack);
-  } else {
-    console.log('Connected to PostgreSQL database successfully!');
-    console.log('Current time from DB:', res.rows[0].now);
-  }
+  if (err) console.error('Database connection error:', err.stack);
+  else console.log('Connected to PostgreSQL database. Current time:', res.rows[0].now);
 });
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configure middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Base API route for health check
-app.get('/', (req, res) => {
-  res.send('CrowdGuardian Backend API is running!');
-});
+// Base route
+app.get('/', (req, res) => res.send('CrowdGuardian Backend API is running!'));
 
-// Setup API routers and inject the database pool
+// API routers
 const createChokePointsRouter = require('./routes/chokePoints');
-const chokePointsRouter = createChokePointsRouter(pool);
-app.use('/api/choke-points', chokePointsRouter);
+app.use('/api/choke-points', createChokePointsRouter(pool));
 
 const createZoneMetricsRouter = require('./routes/zoneMetrics');
-const zoneMetricsRouter = createZoneMetricsRouter(pool);
-app.use('/api/zone-metrics', zoneMetricsRouter);
+app.use('/api/zone-metrics', createZoneMetricsRouter(pool));
 
 const createAlertsRouter = require('./routes/alerts');
-const alertsRouter = createAlertsRouter(pool);
-app.use('/api/alerts', alertsRouter);
+app.use('/api/alerts', createAlertsRouter(pool));
 
 const createHistoricalDataRouter = require('./routes/incidents');
-const historicalDataRouter = createHistoricalDataRouter(pool);
-app.use('/api/historical-data', historicalDataRouter);
+app.use('/api/historical-data', createHistoricalDataRouter(pool));
 
 const createEvacuationRoutesRouter = require('./routes/evacuationRoutes');
-const evacuationRoutesRouter = createEvacuationRoutesRouter(pool);
-app.use('/api/evacuation-routes', evacuationRoutesRouter);
+app.use('/api/evacuation-routes', createEvacuationRoutesRouter(pool));
 
 // ----------------------------------------------------------------------
 // ML MODEL AND ALGORITHM UTILITIES
@@ -74,9 +63,7 @@ function runPythonPrediction(scriptPath, inputData, callback) {
   pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
 
   pythonProcess.on('close', (code) => {
-    if (code !== 0) {
-      return callback(new Error(`Python script exited with code ${code}. Error: ${errorData || 'Unknown error'}`));
-    }
+    if (code !== 0) return callback(new Error(`Python script exited with code ${code}. Error: ${errorData || 'Unknown error'}`));
     const predictionResult = outputData.trim();
     if (!['Low', 'Medium', 'High', 'Critical'].includes(predictionResult)) {
       return callback(new Error(`Python script returned unexpected result: ${predictionResult}`));
@@ -84,9 +71,7 @@ function runPythonPrediction(scriptPath, inputData, callback) {
     callback(null, predictionResult);
   });
 
-  pythonProcess.on('error', (err) => {
-    callback(new Error(`Failed to start Python process: ${err.message}`));
-  });
+  pythonProcess.on('error', (err) => callback(new Error(`Failed to start Python process: ${err.message}`)));
 }
 
 // ----------------------------------------------------------------------
@@ -96,9 +81,7 @@ function runPythonPrediction(scriptPath, inputData, callback) {
 // POST /api/predict-risk
 app.post('/api/predict-risk', async (req, res) => {
   const { crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day } = req.body;
-
-  if (crowd_density === undefined || avg_flow_speed === undefined ||
-      rate_of_change_density === undefined || hour_of_day === undefined) {
+  if (crowd_density === undefined || avg_flow_speed === undefined || rate_of_change_density === undefined || hour_of_day === undefined) {
     return res.status(400).json({ error: 'Missing required ML features.' });
   }
 
@@ -110,10 +93,7 @@ app.post('/api/predict-risk', async (req, res) => {
   };
 
   runPythonPrediction('./python_scripts/predict_risk.py', inputData, (err, predictionResult) => {
-    if (err) {
-      console.error(`Manual API Prediction Error: ${err.message}`);
-      return res.status(500).json({ error: err.message });
-    }
+    if (err) return res.status(500).json({ error: err.message });
     res.json({ predicted_risk_level: predictionResult, input_used: inputData });
   });
 });
@@ -121,68 +101,37 @@ app.post('/api/predict-risk', async (req, res) => {
 // POST /api/calculate-evacuation-route
 app.post('/api/calculate-evacuation-route', async (req, res) => {
   const { start_lat, start_lng, end_lat, end_lng, city_name = "New Delhi, India" } = req.body;
-
-  if (start_lat === undefined || start_lng === undefined || end_lat === undefined || end_lng === undefined) {
+  if ([start_lat, start_lng, end_lat, end_lng].some(v => v === undefined)) {
     return res.status(400).json({ error: 'start/end coordinates are required.' });
   }
 
-  const numericStartLat = parseFloat(start_lat);
-  const numericStartLng = parseFloat(start_lng);
-  const numericEndLat = parseFloat(end_lat);
-  const numericEndLng = parseFloat(end_lng);
-
-  if (isNaN(numericStartLat) || isNaN(numericStartLng) || isNaN(numericEndLat) || isNaN(numericEndLng)) {
-      return res.status(400).json({ error: 'Coordinates must be numeric values.' });
+  const [numericStartLat, numericStartLng, numericEndLat, numericEndLng] = [start_lat, start_lng, end_lat, end_lng].map(parseFloat);
+  if ([numericStartLat, numericStartLng, numericEndLat, numericEndLng].some(isNaN)) {
+    return res.status(400).json({ error: 'Coordinates must be numeric values.' });
   }
 
   const pythonScriptPath = './python_scripts/calculate_evacuation_route.py';
-  const args = [
-    pythonScriptPath,
-    numericStartLat.toString(),
-    numericStartLng.toString(),
-    numericEndLat.toString(),
-    numericEndLng.toString(),
-    city_name
-  ];
-
+  const args = [pythonScriptPath, numericStartLat.toString(), numericStartLng.toString(), numericEndLat.toString(), numericEndLng.toString(), city_name];
   const pythonProcess = spawn('python', args);
 
-  let outputData = '';
-  let errorData = '';
-
+  let outputData = '', errorData = '';
   pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
   pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
 
   pythonProcess.on('close', (code) => {
-    if (code !== 0) {
-      console.error(`Python script (Evacuation) exited with code ${code}. Error: ${errorData}`);
-      return res.status(500).json({ error: `Python script error: ${errorData || 'Unknown error'}` });
-    }
-
+    if (code !== 0) return res.status(500).json({ error: `Python script error: ${errorData || 'Unknown error'}` });
     try {
       const result = JSON.parse(outputData.trim());
-      
-      if (result.status === 'error') {
-          console.error(`Python script (Evacuation) returned an error: ${result.message}`);
-          return res.status(500).json({ error: result.message });
-      }
-
       if (result.status !== 'success' || !Array.isArray(result.route_coordinates)) {
-          console.error(`Python script (Evacuation) returned unexpected result structure: `, result);
-          return res.status(500).json({ error: 'Python script returned unexpected result structure' });
+        return res.status(500).json({ error: 'Python script returned unexpected result structure' });
       }
-
       res.json(result);
-    } catch (parseError) {
-      console.error('Error parsing JSON output from Python script (Evacuation):', parseError);
+    } catch {
       res.status(500).json({ error: 'Error parsing result from evacuation route calculation script' });
     }
   });
 
-  pythonProcess.on('error', (err) => {
-    console.error('Failed to start Python process (Evacuation):', err);
-    res.status(500).json({ error: 'Failed to start evacuation route calculation process' });
-  });
+  pythonProcess.on('error', (err) => res.status(500).json({ error: 'Failed to start evacuation route calculation process' }));
 });
 
 // ----------------------------------------------------------------------
@@ -192,28 +141,28 @@ app.post('/api/calculate-evacuation-route', async (req, res) => {
 const SAFE_ZONE_COORDINATES = { lat: 28.6050, lng: 77.2000 };
 const EVACUATION_TRIGGER_LEVELS = ['High', 'Critical'];
 
-// Zone coordinate mapping
+// --- UPDATED ZONE COORDINATE MAPPING (actual zone_ids) ---
 const ZONE_COORDINATE_MAPPING = {
-    'Z1': { lat: 28.6316, lng: 77.2180 },
-    'Z2': { lat: 28.6129, lng: 77.2274 },
-    'Z3': { lat: 28.5535, lng: 77.2588 },
-    'Z4': { lat: 28.6575, lng: 77.2340 }
+  'Z1_CP': { lat: 28.6316, lng: 77.2180 }, // Connaught Place
+  'Z2_IG': { lat: 28.6129, lng: 77.2274 }, // India Gate
+  'Z3_LT': { lat: 28.5535, lng: 77.2588 }, // Lotus Temple
+  'Z4_RF': { lat: 28.6562, lng: 77.2410 }, // Red Fort
+  'Z5_HK': { lat: 28.5530, lng: 77.2090 }, // Hauz Khas
+  'Z6_SF': { lat: 28.5520, lng: 77.1620 }, // Siri Fort
+  'Z7_SCW': { lat: 28.5355, lng: 77.1450 }, // Select Citywalk
+  'Z8_QM': { lat: 28.5285, lng: 77.1372 }, // Qutub Minar
 };
 
+// Process risk per zone
 const processZoneRisk = async (zoneId, zoneMetrics) => {
-  const latestMetric = zoneMetrics[0]; 
+  const latestMetric = zoneMetrics[0];
   let rate_of_change_density = 0;
-  
   if (zoneMetrics.length >= 2) {
     const recent = zoneMetrics[0];
     const previous = zoneMetrics[1];
     const timeDiffSeconds = (new Date(recent.timestamp) - new Date(previous.timestamp)) / 1000;
-    
-    if (timeDiffSeconds > 0) {
-      rate_of_change_density = (recent.density - previous.density) / timeDiffSeconds;
-    }
+    if (timeDiffSeconds > 0) rate_of_change_density = (recent.density - previous.density) / timeDiffSeconds;
   }
-
   const hour_of_day = new Date(latestMetric.timestamp).getHours();
 
   const inputData = {
@@ -224,17 +173,14 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
   };
 
   runPythonPrediction('./python_scripts/predict_risk.py', inputData, (err, predictionResult) => {
-    if (err) {
-      console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
-      return;
-    }
+    if (err) return console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
 
     const alertTimestampIso = new Date().toISOString();
     const alertData = {
       type: 'RISK_PREDICTION',
       zone_id: zoneId,
       severity_level: predictionResult,
-      message: `Predicted ${predictionResult} risk in Zone ${zoneId} based on metrics.`,
+      message: `Predicted ${predictionResult} risk in Zone ${zoneId}.`,
       timestamp: alertTimestampIso,
       generated_at: alertTimestampIso,
       input_data_used: inputData
@@ -246,7 +192,7 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
 
       const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
       if (!startCoord) {
-        console.log(`Start coordinates for zone ${zoneId} unknown. Skipping route calculation.`);
+        console.log(`No mapped start coordinates for zone ${zoneId}. Skipping route calculation.`);
         return;
       }
 
@@ -261,7 +207,6 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
 
       const evacProcess = spawn('python', evacArgs);
       let evacOutputData = '', evacErrorData = '';
-
       evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
       evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
 
@@ -271,13 +216,11 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
           io.emit('evacuation_error', { error: evacErrorData, zone_id: zoneId });
           return;
         }
-
         try {
           const evacResult = JSON.parse(evacOutputData.trim());
           if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
             throw new Error(evacResult.message || 'Unexpected result structure');
           }
-
           io.emit('evacuation_route_calculated', {
             type: 'EVACUATION_ROUTE_CALCULATED',
             zone_id: zoneId,
@@ -297,17 +240,16 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
   });
 };
 
+// Automatic risk prediction loop
 async function runAutomaticRiskPrediction() {
   try {
-    // Get latest metric per zone
     const result = await pool.query(`
       SELECT DISTINCT ON (zone_id)
         zone_id, density, avg_speed, flow_direction, choke_point_id, timestamp
       FROM zone_metrics
       ORDER BY zone_id, timestamp DESC
     `);
-
-    if (result.rows.length === 0) return;
+    if (!result.rows.length) return;
 
     const metricsByZone = {};
     result.rows.forEach(row => {
@@ -318,22 +260,19 @@ async function runAutomaticRiskPrediction() {
     for (const zoneId of Object.keys(metricsByZone)) {
       processZoneRisk(zoneId, metricsByZone[zoneId]);
     }
-
   } catch (err) {
     console.error('Error during automatic risk prediction:', err);
   }
 }
 
 // ----------------------------------------------------------------------
-// SERVER & SOCKET SETUP
+// SERVER & SOCKET.IO SETUP
 // ----------------------------------------------------------------------
 
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: { origin: "http://localhost:5173", methods: ["GET", "POST"] }
-});
+const io = socketIo(server, { cors: { origin: "http://localhost:5173", methods: ["GET","POST"] } });
 
-// Emit latest zone metrics including coordinates
+// Emit latest zone metrics
 async function emitLatestZoneMetrics() {
   try {
     const result = await pool.query(`
@@ -350,31 +289,27 @@ async function emitLatestZoneMetrics() {
       JOIN choke_points zp ON zm.choke_point_id = zp.id
       ORDER BY zm.zone_id, zm.timestamp DESC
     `);
-
-    if (result.rows.length > 0) {
-      io.emit('zone_metrics_update', result.rows);
-    } else {
-      console.log("No zone metrics found to emit.");
-    }
+    if (result.rows.length) io.emit('zone_metrics_update', result.rows);
   } catch (err) {
-    console.error('Error fetching/emitting latest zone metrics:', err);
+    console.error('Error emitting latest zone metrics:', err);
   }
 }
 
-// Schedule jobs
+// Schedule automatic tasks
 const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
 const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 3000);
 
+// Socket.IO connection
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
   socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` });
   socket.on('disconnect', () => console.log('A user disconnected:', socket.id));
 });
 
-server.listen(port, () => {
-  console.log(`CrowdGuardian Backend server listening at http://localhost:${port}`);
-});
+// Start server
+server.listen(port, () => console.log(`CrowdGuardian Backend listening at http://localhost:${port}`));
 
+// Graceful shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
   clearInterval(predictionInterval);
