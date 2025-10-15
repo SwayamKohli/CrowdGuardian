@@ -99,7 +99,6 @@ const MapView = () => {
         setSocketMessages(prev => [...prev, { type: 'evacuation_error', error: data.error, zone_id: data.zone_id, timestamp: new Date().toLocaleTimeString() }]);
       };
 
-      // --- FIX/ENHANCE: Listener for real-time zone metrics updates with robust numeric parsing ---
       const handleZoneMetricsUpdate = (data) => {
         const parsedData = data.map(metric => {
           const parsedLatitude = parseFloat(metric.latitude);
@@ -117,11 +116,7 @@ const MapView = () => {
         });
 
         setZoneMetrics(parsedData);
-
-        // Optional: socketMessages for visibility
-        // setSocketMessages(prev => [...prev, { type: 'zone_metrics_update', count: parsedData.length, timestamp: new Date().toLocaleTimeString() }]);
       };
-      // --- END FIX/ENHANCE ---
 
       newSocket.on('server_hello', handleHello);
       newSocket.on('risk_alert_generated', handleRiskAlert);
@@ -341,23 +336,36 @@ const MapView = () => {
       <div className="socket-messages">
         <h4>Real-Time Alerts:</h4>
         <ul>
+          {/* Render individual risk alerts with robust timestamp parsing and cleaned zone_id */}
           {riskAlerts.map((alert, index) => {
-            let ts = alert.timestamp || alert.generated_at;
-            const alertDate = new Date(ts);
-            const displayTimestamp = alertDate instanceof Date && !isNaN(alertDate)
-              ? alertDate.toLocaleTimeString()
-              : ts || 'N/A';
+            let displayZoneId = alert.zone_id || 'N/A';
+            displayZoneId = displayZoneId.replace(/_/g, ' ');
+            displayZoneId = displayZoneId.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+
+            let displayTimestamp = 'N/A';
+            const timestampToUse = alert.timestamp || alert.generated_at;
+            if (timestampToUse) {
+              const alertDate = new Date(timestampToUse);
+              if (alertDate instanceof Date && !isNaN(alertDate)) {
+                displayTimestamp = alertDate.toLocaleTimeString();
+              } else {
+                displayTimestamp = timestampToUse;
+              }
+            }
+
             return (
               <li key={`alert-${index}`}>
-                <strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {alert.zone_id}
+                <strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {displayZoneId}
               </li>
             );
           })}
+
           {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
             <li key={`evac-status-${zoneId}`} className="evacuation-message">
               <strong>[{new Date().toLocaleTimeString()}] EVACUATION:</strong> Route calculated for {routeData.zone_id}. Distance: {routeData.distance_kms} km.
             </li>
           ))}
+
           {socketMessages.find(msg => msg.type === 'hello') && (
             <li key="hello-status">
               <strong>[{socketMessages.find(msg => msg.type === 'hello').timestamp}] Status:</strong> Socket connected.
