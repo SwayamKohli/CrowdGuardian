@@ -385,6 +385,40 @@
   background: linear-gradient(180deg, #ff8555, #ffd54f, #69f0ae);
 }
 
+/* --- NEW V1.5 FEATURE: Styles for filter info --- */
+.filter-info {
+  padding: 10px 15px;
+  background-color: #e9ecef; /* Light grey background */
+  border: 1px solid #ced4da; /* Light border */
+  border-radius: 4px;
+  margin-bottom: 15px; /* Space below */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filter-info p {
+  margin: 0;
+  font-size: 0.9em;
+  color: #495057; /* Darker text */
+}
+
+.clear-filter-btn {
+  background-color: #007bff; /* Primary blue */
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background-color 0.2s ease;
+}
+
+.clear-filter-btn:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+}
+/* --- END NEW V1.5 FEATURE --- */
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .alerts-panel h3 {

@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './AlertsPanel.css';
 
-// Helper function to format ALERT_TYPE strings for display (e.g., CHOKE_POINT_ALERT -> Choke Point Alert)
+// Helper function to format ALERT_TYPE strings (e.g., CHOKE_POINT_ALERT -> Choke Point Alert)
 const formatAlertType = (typeString) => {
   if (!typeString) return 'N/A';
-  // 1. Replace underscores with spaces
-  // 2. Convert to lowercase
-  // 3. Capitalize the first letter of each word
   return typeString
     .replace(/_/g, ' ')
     .toLowerCase()
@@ -15,20 +12,19 @@ const formatAlertType = (typeString) => {
     .join(' ');
 };
 
-const AlertsPanel = () => {
+const AlertsPanel = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept props
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Fetch alerts from backend periodically
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
         setLoading(true);
         setError(null);
         const response = await fetch('http://localhost:3000/api/alerts?limit=20');
-        if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
         const data = await response.json();
         setAlerts(data);
       } catch (err) {
@@ -54,18 +50,23 @@ const AlertsPanel = () => {
   const getAlertClass = (severity) => {
     const lowerSeverity = severity ? severity.toLowerCase() : 'info';
     switch (lowerSeverity) {
-      case 'critical':
-        return 'alert-item critical';
-      case 'high':
-        return 'alert-item high';
-      case 'medium':
-        return 'alert-item medium';
-      case 'low':
-        return 'alert-item low';
-      default:
-        return 'alert-item info';
+      case 'critical': return 'alert-item critical';
+      case 'high': return 'alert-item high';
+      case 'medium': return 'alert-item medium';
+      case 'low': return 'alert-item low';
+      default: return 'alert-item info';
     }
   };
+
+  // --- V1.5 FEATURE: Clear zone filter ---
+  const clearZoneFilter = () => {
+    if (setSelectedZoneId) setSelectedZoneId(null);
+  };
+
+  // --- V1.5 FEATURE: Filter alerts by selectedZoneId ---
+  const filteredAlerts = selectedZoneId
+    ? alerts.filter(alert => alert.zone_id === selectedZoneId)
+    : alerts;
 
   if (loading) {
     return (
@@ -88,21 +89,31 @@ const AlertsPanel = () => {
   return (
     <div className="alerts-panel">
       <h3>Alerts & Notifications</h3>
+
+      {/* V1.5: Show filter info and clear button */}
+      {selectedZoneId && (
+        <div className="filter-info">
+          <p>
+            Showing alerts for <strong>Zone {selectedZoneId}</strong>.{' '}
+            <button className="clear-filter-btn" onClick={clearZoneFilter}>
+              Show All Alerts
+            </button>
+          </p>
+        </div>
+      )}
+
       <div className="alerts-list">
-        {alerts.length === 0 ? (
+        {filteredAlerts.length === 0 ? (
           <p className="no-alerts">No alerts at this time.</p>
         ) : (
-          alerts.map((alert) => (
+          filteredAlerts.map((alert) => (
             <div key={alert.id} className={getAlertClass(alert.severity_level)}>
               <div className="alert-header">
-                {/* FIX: Apply formatting function here */}
                 <span className="alert-type">{formatAlertType(alert.alert_type)}</span>
                 <span className="alert-severity">{alert.severity_level}</span>
                 <span className="alert-time">{formatTime(alert.generated_at)}</span>
               </div>
-              <div className="alert-message">
-                {alert.message}
-              </div>
+              <div className="alert-message">{alert.message}</div>
               {alert.resolved && (
                 <div className="alert-resolved">Resolved at: {formatTime(alert.resolved_at)}</div>
               )}

@@ -8,7 +8,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-// --- FIX: Ensure default Leaflet marker icons load properly in bundled environments ---
+// --- FIX: Ensure default Leaflet marker icons load properly ---
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -16,7 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-const MapView = () => {
+const MapView = ({ selectedZoneId, setSelectedZoneId }) => { // <-- Accept props
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const toggleFullscreen = () => setIsMapFullscreen(!isMapFullscreen);
 
@@ -33,7 +33,7 @@ const MapView = () => {
 
   const socketRef = useRef(null);
 
-  // --- Fetch Choke Points periodically ---
+  // --- Fetch choke points periodically ---
   useEffect(() => {
     const fetchChokePoints = async () => {
       try {
@@ -49,7 +49,6 @@ const MapView = () => {
         setLoading(false);
       }
     };
-
     fetchChokePoints();
     const intervalId = setInterval(fetchChokePoints, 5000);
     return () => clearInterval(intervalId);
@@ -68,17 +67,14 @@ const MapView = () => {
       const handleRiskAlert = (data) => {
         const LOW_RISK_LEVELS = ['Low', 'Medium'];
         if (LOW_RISK_LEVELS.includes(data.severity_level) && evacuationRoutes[data.zone_id]) {
-          setEvacuationRoutes(prevRoutes => {
-            const updated = { ...prevRoutes };
+          setEvacuationRoutes(prev => {
+            const updated = { ...prev };
             delete updated[data.zone_id];
             return updated;
           });
         }
 
-        setRiskAlerts(prev => {
-          const updated = [...prev, data].slice(-10);
-          return updated;
-        });
+        setRiskAlerts(prev => [...prev, data].slice(-10));
 
         let formattedTimestamp = 'N/A';
         const ts = data.timestamp || data.generated_at;
@@ -100,21 +96,13 @@ const MapView = () => {
       };
 
       const handleZoneMetricsUpdate = (data) => {
-        const parsedData = data.map(metric => {
-          const parsedLatitude = parseFloat(metric.latitude);
-          const parsedLongitude = parseFloat(metric.longitude);
-          const parsedDensity = parseFloat(metric.density);
-          const parsedAvgSpeed = parseFloat(metric.avg_speed);
-
-          return {
-            ...metric,
-            latitude: !isNaN(parsedLatitude) ? parsedLatitude : 0,
-            longitude: !isNaN(parsedLongitude) ? parsedLongitude : 0,
-            density: !isNaN(parsedDensity) ? parsedDensity : 0,
-            avg_speed: !isNaN(parsedAvgSpeed) ? parsedAvgSpeed : 0,
-          };
-        });
-
+        const parsedData = data.map(metric => ({
+          ...metric,
+          latitude: parseFloat(metric.latitude) || 0,
+          longitude: parseFloat(metric.longitude) || 0,
+          density: parseFloat(metric.density) || 0,
+          avg_speed: parseFloat(metric.avg_speed) || 0,
+        }));
         setZoneMetrics(parsedData);
       };
 
@@ -144,11 +132,9 @@ const MapView = () => {
     };
   }, [evacuationRoutes]);
 
-  // --- Map Utility Functions ---
+  // --- Map utility functions ---
   const getMarkerColor = (utilization, capacity) => {
-    const util = utilization || 0;
-    const cap = capacity || 100;
-    const percentage = (util / cap) * 100;
+    const percentage = ((utilization || 0) / (capacity || 100)) * 100;
     if (percentage > 80) return '#dc3545';
     if (percentage > 60) return '#ffc107';
     return '#28a745';
@@ -161,7 +147,7 @@ const MapView = () => {
     return '#00FF00';
   };
 
-  const getCircleRadius = (density) => 80 + (density * 30);
+  const getCircleRadius = (density) => 80 + density * 30;
 
   const getRiskZoneColor = (riskLevel) => {
     switch (riskLevel?.toLowerCase()) {
@@ -189,7 +175,7 @@ const MapView = () => {
         [lat - offset, lng - offset],
         [lat - offset, lng + offset],
         [lat + offset, lng + offset],
-        [lat + offset, lng - offset]
+        [lat + offset, lng - offset],
       ];
     }
     return null;
@@ -227,7 +213,7 @@ const MapView = () => {
         </Polyline>
       ))}
 
-      {/* Risk Zones */}
+      {/* Risk Zones with clickable polygons */}
       {riskAlerts.map((alert, index) => {
         const zoneMetric = zoneMetrics.find(m => m.zone_id === alert.zone_id);
         const location = zoneMetric ? [zoneMetric.latitude, zoneMetric.longitude] : null;
@@ -242,6 +228,13 @@ const MapView = () => {
             fillColor={getRiskZoneColor(alert.severity_level)}
             fillOpacity={isFullscreen ? 0.4 : 0.3}
             weight={2}
+            // --- V1.5 FEATURE: propagate clicked zone ID ---
+            eventHandlers={{
+              click: () => {
+                console.log(`MapView: Risk zone ${alert.zone_id} clicked.`);
+                if (setSelectedZoneId) setSelectedZoneId(alert.zone_id);
+              },
+            }}
           >
             {!isFullscreen && (
               <Popup>
@@ -256,7 +249,7 @@ const MapView = () => {
         );
       })}
 
-      {/* Render circles for each zone based on REAL-TIME density from Socket.IO */}
+      {/* Zone density circles */}
       {zoneMetrics.map((metric) => (
         <Circle
           key={metric.id || `${metric.zone_id}-${metric.timestamp}`}
@@ -279,7 +272,7 @@ const MapView = () => {
         </Circle>
       ))}
 
-      {/* Choke Point Markers */}
+      {/* Choke point markers */}
       {chokePoints.map((point) => (
         <Marker
           key={point.id}
@@ -312,7 +305,6 @@ const MapView = () => {
 
   return (
     <div className="map-container">
-      {/* Fullscreen Map */}
       {isMapFullscreen && (
         <div className="fullscreen-map-overlay">
           <div className="fullscreen-map-header">
@@ -327,37 +319,27 @@ const MapView = () => {
 
       <div className="map-header-with-controls">
         <h3>Real-Time Crowd Density Map</h3>
-        <button className="fullscreen-toggle-btn" onClick={toggleFullscreen}>
-          &#x26F6;
-        </button>
+        <button className="fullscreen-toggle-btn" onClick={toggleFullscreen}>&#x26F6;</button>
       </div>
 
-      {/* Socket Messages Display */}
+      {/* Socket messages */}
       <div className="socket-messages">
         <h4>Real-Time Alerts:</h4>
         <ul>
-          {/* Render individual risk alerts with robust timestamp parsing and cleaned zone_id */}
           {riskAlerts.map((alert, index) => {
             let displayZoneId = alert.zone_id || 'N/A';
             displayZoneId = displayZoneId.replace(/_/g, ' ');
-            displayZoneId = displayZoneId.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+            displayZoneId = displayZoneId.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 
             let displayTimestamp = 'N/A';
-            const timestampToUse = alert.timestamp || alert.generated_at;
-            if (timestampToUse) {
-              const alertDate = new Date(timestampToUse);
-              if (alertDate instanceof Date && !isNaN(alertDate)) {
-                displayTimestamp = alertDate.toLocaleTimeString();
-              } else {
-                displayTimestamp = timestampToUse;
-              }
+            const ts = alert.timestamp || alert.generated_at;
+            if (ts) {
+              const d = new Date(ts);
+              if (d instanceof Date && !isNaN(d)) displayTimestamp = d.toLocaleTimeString();
+              else displayTimestamp = ts;
             }
 
-            return (
-              <li key={`alert-${index}`}>
-                <strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {displayZoneId}
-              </li>
-            );
+            return <li key={`alert-${index}`}><strong>[{displayTimestamp}] {alert.severity_level} Risk:</strong> Zone {displayZoneId}</li>;
           })}
 
           {Object.entries(evacuationRoutes).map(([zoneId, routeData]) => (
