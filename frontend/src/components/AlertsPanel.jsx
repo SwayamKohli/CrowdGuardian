@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import './AlertsPanel.css';
 
 const formatAlertType = (typeString) => {
@@ -30,26 +31,46 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const socketRef = useRef(null);
+
+  const fetchAlerts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch('http://localhost:3000/api/alerts?limit=50');
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+      const data = await response.json();
+      setAlerts(data);
+    } catch (err) {
+      console.error('Error fetching alerts:', err);
+      setError(err.message);
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await fetch('http://localhost:3000/api/alerts?limit=50');
-        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
-        const data = await response.json();
-        setAlerts(data);
-      } catch (err) {
-        setError(err.message);
-        setAlerts([]);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 30000);
-    return () => clearInterval(interval);
+
+    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    socketRef.current = socket;
+
+    socket.on('risk_alert_generated', (newAlert) => {
+      setAlerts(prev => {
+        const exists = prev.some(a => a.id === newAlert.id);
+        if (exists) return prev;
+        return [newAlert, ...prev].slice(0, 50);
+      });
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+    };
   }, []);
 
   const formatTime = (isoString) => {
@@ -74,7 +95,6 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
     setSelectedZoneId(null);
   };
 
-  // Filter alerts by selectedZoneId (now possible since `zone_id` exists in alerts table)
   const filteredAlerts = selectedZoneId
     ? alerts.filter(alert => alert.zone_id === selectedZoneId)
     : alerts;
@@ -87,6 +107,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
       </div>
     );
   }
+
   if (error) {
     return (
       <div className="alerts-panel">
@@ -99,6 +120,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
   return (
     <div className="alerts-panel">
       <h3>Alerts & Notifications</h3>
+
       {selectedZoneId && (
         <div className="filter-info">
           <p>
@@ -109,6 +131,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
           </p>
         </div>
       )}
+
       <div className="alerts-list">
         {filteredAlerts.length === 0 ? (
           <p className="no-alerts">No alerts at this time.</p>
@@ -122,7 +145,9 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
               </div>
               <div className="alert-message">{alert.message}</div>
               {alert.resolved && (
-                <div className="alert-resolved">Resolved at: {formatTime(alert.resolved_at)}</div>
+                <div className="alert-resolved">
+                  Resolved at: {formatTime(alert.resolved_at)}
+                </div>
               )}
             </div>
           ))

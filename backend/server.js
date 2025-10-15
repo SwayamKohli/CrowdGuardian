@@ -25,14 +25,10 @@ pool.query('SELECT NOW()', (err, res) => {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
-
-// Base route
 app.get('/', (req, res) => res.send('CrowdGuardian Backend API is running!'));
 
-// API routers
 const createChokePointsRouter = require('./routes/chokePoints');
 app.use('/api/choke-points', createChokePointsRouter(pool));
 
@@ -75,10 +71,8 @@ function runPythonPrediction(scriptPath, inputData, callback) {
 }
 
 // ----------------------------------------------------------------------
-// API ENDPOINTS
+// API ENDPOINTS (unchanged)
 // ----------------------------------------------------------------------
-
-// POST /api/predict-risk
 app.post('/api/predict-risk', async (req, res) => {
   const { crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day } = req.body;
   if (crowd_density === undefined || avg_flow_speed === undefined || rate_of_change_density === undefined || hour_of_day === undefined) {
@@ -98,7 +92,6 @@ app.post('/api/predict-risk', async (req, res) => {
   });
 });
 
-// POST /api/calculate-evacuation-route
 app.post('/api/calculate-evacuation-route', async (req, res) => {
   const { start_lat, start_lng, end_lat, end_lng, city_name = "New Delhi, India" } = req.body;
   if ([start_lat, start_lng, end_lat, end_lng].some(v => v === undefined)) {
@@ -137,11 +130,9 @@ app.post('/api/calculate-evacuation-route', async (req, res) => {
 // ----------------------------------------------------------------------
 // AUTOMATIC RISK PREDICTION LOGIC
 // ----------------------------------------------------------------------
-
 const SAFE_ZONE_COORDINATES = { lat: 28.6050, lng: 77.2000 };
 const EVACUATION_TRIGGER_LEVELS = ['High', 'Critical'];
 
-// --- UPDATED ZONE COORDINATE MAPPING (actual zone_ids) ---
 const ZONE_COORDINATE_MAPPING = {
   'Z01_CP': { lat: 28.6316, lng: 77.2180 },
   'Z02_IG': { lat: 28.6129, lng: 77.2274 },
@@ -165,7 +156,7 @@ const ZONE_COORDINATE_MAPPING = {
   'Z20_DU': { lat: 28.6872, lng: 77.2084 },
 };
 
-// Process risk per zone
+// ✅ FIXED: async + save to DB + include alert_type
 const processZoneRisk = async (zoneId, zoneMetrics) => {
   const latestMetric = zoneMetrics[0];
   let rate_of_change_density = 0;
@@ -184,24 +175,46 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
     hour_of_day,
   };
 
-  runPythonPrediction('./python_scripts/predict_risk.py', inputData, (err, predictionResult) => {
+  runPythonPrediction('./python_scripts/predict_risk.py', inputData, async (err, predictionResult) => {
     if (err) return console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
 
+    // Map severity to alert_type
+    let alertType = 'LOW_RISK';
+    if (predictionResult === 'Critical') alertType = 'HIGH_RISK';
+    else if (predictionResult === 'High') alertType = 'PANIC_DETECTED';
+    else if (predictionResult === 'Medium') alertType = 'CHOKE_POINT_ALERT';
+
     const alertTimestampIso = new Date().toISOString();
-    const alertData = {
-      type: 'RISK_PREDICTION',
+    const baseAlertData = {
+      alert_type: alertType,
       zone_id: zoneId,
       severity_level: predictionResult,
       message: `Predicted ${predictionResult} risk in Zone ${zoneId}.`,
-      timestamp: alertTimestampIso,
       generated_at: alertTimestampIso,
-      input_data_used: inputData
+      resolved: false
     };
+
+    let alertData = { ...baseAlertData, id: Date.now() }; // temporary ID
+
+    // Save to DB
+    try {
+      const insertResult = await pool.query(
+        `INSERT INTO alerts (alert_type, severity_level, message, generated_at, zone_id, resolved)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [alertType, predictionResult, baseAlertData.message, alertTimestampIso, zoneId, false]
+      );
+      alertData.id = insertResult.rows[0].id; // use real DB ID
+    } catch (dbErr) {
+      console.error('Failed to save alert to DB:', dbErr);
+    }
+
+    // Emit to frontend
     io.emit('risk_alert_generated', alertData);
 
+    // Evacuation logic (unchanged)
     if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
       console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Triggering route calculation...`);
-
       const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
       if (!startCoord) {
         console.log(`No mapped start coordinates for zone ${zoneId}. Skipping route calculation.`);
@@ -252,7 +265,6 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
   });
 };
 
-// Automatic risk prediction loop
 async function runAutomaticRiskPrediction() {
   try {
     const result = await pool.query(`
@@ -280,11 +292,9 @@ async function runAutomaticRiskPrediction() {
 // ----------------------------------------------------------------------
 // SERVER & SOCKET.IO SETUP
 // ----------------------------------------------------------------------
-
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "http://localhost:5173", methods: ["GET","POST"] } });
 
-// Emit latest zone metrics
 async function emitLatestZoneMetrics() {
   try {
     const result = await pool.query(`
@@ -307,21 +317,17 @@ async function emitLatestZoneMetrics() {
   }
 }
 
-// Schedule automatic tasks
 const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
 const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 3000);
 
-// Socket.IO connection
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
   socket.emit('server_hello', { message: `Hello from server! Your ID is ${socket.id}` });
   socket.on('disconnect', () => console.log('A user disconnected:', socket.id));
 });
 
-// Start server
 server.listen(port, () => console.log(`CrowdGuardian Backend listening at http://localhost:${port}`));
 
-// Graceful shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
   clearInterval(predictionInterval);
