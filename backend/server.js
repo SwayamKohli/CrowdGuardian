@@ -71,7 +71,7 @@ function runPythonPrediction(scriptPath, inputData, callback) {
 }
 
 // ----------------------------------------------------------------------
-// API ENDPOINTS (unchanged)
+// API ENDPOINTS
 // ----------------------------------------------------------------------
 app.post('/api/predict-risk', async (req, res) => {
   const { crowd_density, avg_flow_speed, rate_of_change_density, hour_of_day } = req.body;
@@ -156,7 +156,6 @@ const ZONE_COORDINATE_MAPPING = {
   'Z20_DU': { lat: 28.6872, lng: 77.2084 },
 };
 
-// ✅ FIXED: async + save to DB + include alert_type
 const processZoneRisk = async (zoneId, zoneMetrics) => {
   const latestMetric = zoneMetrics[0];
   let rate_of_change_density = 0;
@@ -178,7 +177,6 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
   runPythonPrediction('./python_scripts/predict_risk.py', inputData, async (err, predictionResult) => {
     if (err) return console.error(`Auto Prediction Error for zone ${zoneId}: ${err.message}`);
 
-    // Map severity to alert_type
     let alertType = 'LOW_RISK';
     if (predictionResult === 'Critical') alertType = 'HIGH_RISK';
     else if (predictionResult === 'High') alertType = 'PANIC_DETECTED';
@@ -194,9 +192,8 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
       resolved: false
     };
 
-    let alertData = { ...baseAlertData, id: Date.now() }; // temporary ID
+    let alertData = { ...baseAlertData, id: Date.now() };
 
-    // Save to DB
     try {
       const insertResult = await pool.query(
         `INSERT INTO alerts (alert_type, severity_level, message, generated_at, zone_id, resolved)
@@ -204,15 +201,13 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
          RETURNING id`,
         [alertType, predictionResult, baseAlertData.message, alertTimestampIso, zoneId, false]
       );
-      alertData.id = insertResult.rows[0].id; // use real DB ID
+      alertData.id = insertResult.rows[0].id;
     } catch (dbErr) {
       console.error('Failed to save alert to DB:', dbErr);
     }
 
-    // Emit to frontend
     io.emit('risk_alert_generated', alertData);
 
-    // Evacuation logic (unchanged)
     if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
       console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Triggering route calculation...`);
       const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
@@ -306,7 +301,8 @@ async function emitLatestZoneMetrics() {
         zm.choke_point_id,
         zm.timestamp,
         zm.latitude,
-        zm.longitude
+        zm.longitude,
+        zm.description
       FROM zone_metrics zm
       WHERE zm.latitude IS NOT NULL AND zm.longitude IS NOT NULL
       ORDER BY zm.zone_id, zm.timestamp DESC
@@ -317,8 +313,63 @@ async function emitLatestZoneMetrics() {
   }
 }
 
+async function simulateLiveCrowdData() {
+  try {
+    const zoneResult = await pool.query('SELECT DISTINCT zone_id, choke_point_id FROM zone_metrics');
+    const chokeResult = await pool.query('SELECT id, capacity FROM choke_points');
+
+    const zones = zoneResult.rows;
+    const chokePoints = chokeResult.rows;
+
+    for (const zone of zones) {
+      const baseDensity = Math.random() * 3 + 2; // 2–5
+      const variation = (Math.random() - 0.5) * 1.5; // ±0.75
+      const density = Math.max(0.5, Math.min(6.0, baseDensity + variation));
+      const avgSpeed = Math.max(0.1, 2.0 - (density * 0.3)); // slower when dense
+
+      await pool.query(`
+        INSERT INTO zone_metrics (zone_id, density, avg_speed, flow_direction, choke_point_id, description)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [
+        zone.zone_id,
+        density.toFixed(2),
+        avgSpeed.toFixed(2),
+        Math.floor(Math.random() * 360),
+        zone.choke_point_id,
+        `${zone.zone_id} Simulated Update`
+      ]);
+    }
+
+    for (const cp of chokePoints) {
+      const baseUtil = cp.capacity * (0.4 + Math.random() * 0.5);
+      const variation = (Math.random() - 0.5) * 30;
+      const utilization = Math.max(0, Math.min(cp.capacity, baseUtil + variation));
+
+      await pool.query(`
+        UPDATE choke_points 
+        SET current_utilization = $1 
+        WHERE id = $2
+      `, [Math.round(utilization), cp.id]);
+    }
+
+    console.log('Simulated live crowd data updated');
+
+    // Emit updated data to frontend
+    await emitLatestZoneMetrics();
+
+  } catch (err) {
+    console.error('Error simulating crowd data:', err);
+  }
+}
+
+// Schedule simulation every 3 seconds
+const simulationInterval = setInterval(simulateLiveCrowdData, 3000);
+
+// ----------------------------------------------------------------------
+// INTERVALS & SOCKET EVENTS
+// ----------------------------------------------------------------------
 const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
-const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 3000);
+const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 5000);
 
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -328,10 +379,14 @@ io.on('connection', (socket) => {
 
 server.listen(port, () => console.log(`CrowdGuardian Backend listening at http://localhost:${port}`));
 
+// ----------------------------------------------------------------------
+// Graceful Shutdown
+// ----------------------------------------------------------------------
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
   clearInterval(predictionInterval);
   clearInterval(metricsEmissionInterval);
+  clearInterval(simulationInterval); 
   server.close(() => {
     console.log('Server closed.');
     process.exit(0);
