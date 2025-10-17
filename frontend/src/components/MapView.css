@@ -31,13 +31,23 @@
   50% { opacity: 1; }
 }
 
-/* Main Heading - Emergency Status Display */
-.map-container h3 {
-  color: #ffc107;
-  margin: 0 0 20px 0;
-  padding: 15px 20px;
-  align-self: flex-start;
+/* --- NEW: Map Header with Controls --- */
+.map-header-with-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   width: 100%;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 2;
+}
+
+/* Main Heading - Emergency Status Display */
+.map-header-with-controls h3 {
+  color: #ffc107;
+  margin: 0;
+  padding: 15px 20px;
+  flex: 1;
   background: linear-gradient(90deg, rgba(255, 107, 53, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
   border-left: 4px solid #ff6b35;
   border-radius: 8px;
@@ -48,11 +58,9 @@
   box-shadow: 
     0 4px 12px rgba(255, 107, 53, 0.2),
     inset 0 1px 0 rgba(255, 193, 7, 0.2);
-  position: relative;
-  z-index: 2;
 }
 
-.map-container h3::before {
+.map-header-with-controls h3::before {
   content: '⚠';
   margin-right: 12px;
   font-size: 1.1em;
@@ -64,6 +72,41 @@
 @keyframes warningBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* Fullscreen Toggle Button */
+.fullscreen-toggle-btn {
+  background: linear-gradient(135deg, #ffc107, #ff6b35);
+  color: white;
+  border: 2px solid rgba(255, 193, 7, 0.4);
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.3em;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 12px rgba(255, 193, 7, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 15px;
+  min-width: 50px;
+  height: 50px;
+}
+
+.fullscreen-toggle-btn:hover {
+  background: linear-gradient(135deg, #ffd54f, #ff8555);
+  border-color: rgba(255, 193, 7, 0.6);
+  box-shadow: 
+    0 6px 16px rgba(255, 193, 7, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px) scale(1.05);
+}
+
+.fullscreen-toggle-btn:active {
+  transform: translateY(0) scale(1);
+  box-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
 }
 
 /* Real-Time Alerts Section - Mission Control Display */
@@ -321,15 +364,167 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+/* --- FULLSCREEN MODAL OVERLAY --- */
+.fullscreen-map-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, rgba(10, 14, 39, 0.97) 0%, rgba(26, 31, 58, 0.97) 100%);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  z-index: 10000;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fullscreen Map Header */
+.fullscreen-map-header {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px 25px;
+  background: linear-gradient(90deg, rgba(255, 107, 53, 0.25) 0%, rgba(255, 193, 7, 0.15) 100%);
+  border-radius: 10px;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 193, 7, 0.2);
+  border: 2px solid rgba(255, 193, 7, 0.4);
+  border-left: 5px solid #ff6b35;
+  animation: headerSlideIn 0.4s ease-out;
+}
+
+@keyframes headerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fullscreen-map-header h3 {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 700;
+  color: #ffc107;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
+}
+
+.fullscreen-map-header h3::before {
+  content: '🗺️';
+  margin-right: 12px;
+  filter: drop-shadow(0 0 8px rgba(255, 193, 7, 0.6));
+}
+
+/* Fullscreen Close Button */
+.fullscreen-close-btn {
+  background: linear-gradient(135deg, #ff6b35, #ff8555);
+  color: white;
+  border: 2px solid rgba(255, 107, 53, 0.5);
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 12px rgba(255, 107, 53, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.fullscreen-close-btn:hover {
+  background: linear-gradient(135deg, #ff8555, #ff9d76);
+  border-color: rgba(255, 107, 53, 0.7);
+  box-shadow: 
+    0 6px 16px rgba(255, 107, 53, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.fullscreen-close-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(255, 107, 53, 0.4);
+}
+
+/* Fullscreen Map Container */
+.fullscreen-leaflet-map {
+  width: 100%;
+  max-width: 1400px;
+  height: calc(100vh - 140px);
+  min-height: 500px;
+  border: 3px solid rgba(255, 193, 7, 0.5);
+  border-radius: 12px;
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 193, 7, 0.3),
+    0 0 60px rgba(255, 193, 7, 0.2);
+  z-index: 10001;
+  background-color: #ffffff;
+  overflow: hidden;
+  animation: mapZoomIn 0.4s ease-out;
+}
+
+@keyframes mapZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Enhanced popup contrast in fullscreen */
+.fullscreen-leaflet-map .leaflet-popup-content-wrapper {
+  background: rgba(20, 25, 40, 0.98);
+  border: 2px solid rgba(255, 193, 7, 0.5);
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .map-container {
     padding: 15px;
   }
 
-  .map-container h3 {
+  .map-header-with-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .map-header-with-controls h3 {
     font-size: 1.2em;
     padding: 12px 15px;
+  }
+
+  .fullscreen-toggle-btn {
+    margin-left: 0;
+    width: 100%;
+    height: 45px;
   }
 
   .socket-messages {
@@ -349,120 +544,22 @@
   .leaflet-map {
     min-height: 350px;
   }
-}
 
-/* --- NEW V1.5 FEATURE: Styles for Fullscreen Modal Overlay --- */
-.fullscreen-map-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0, 0, 0, 0.8); /* Semi-transparent background */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 10000; /* High z-index to appear on top of other elements */
-  padding: 20px;
-  box-sizing: border-box;
-}
+  .fullscreen-map-header {
+    flex-direction: column;
+    gap: 12px;
+    padding: 15px 20px;
+  }
 
-.fullscreen-map-header {
-  width: 100%;
-  max-width: 1200px; /* Match or be slightly less than the map width */
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding: 10px 15px;
-  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  color: #ffc107;
-  border-left: 4px solid #ff6b35;
-}
+  .fullscreen-map-header h3 {
+    font-size: 1.3em;
+  }
 
-.fullscreen-map-header h3 {
-  margin: 0;
-  font-size: 1.4em;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 6px rgba(255, 193, 7, 0.3);
-}
+  .fullscreen-close-btn {
+    width: 100%;
+  }
 
-.fullscreen-close-btn {
-  background: linear-gradient(135deg, #ff6b35, #ff8555);
-  color: white;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+  .fullscreen-leaflet-map {
+    height: calc(100vh - 180px);
+  }
 }
-
-.fullscreen-close-btn:hover {
-  background: linear-gradient(135deg, #ff8555, #ff9d76);
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.5);
-  transform: translateY(-2px);
-}
-
-.fullscreen-close-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(255, 107, 53, 0.3);
-}
-
-.fullscreen-leaflet-map {
-  width: 100%;
-  max-width: 1200px; /* Set a max-width for the map */
-  height: 80vh; /* Use viewport height for responsiveness */
-  min-height: 500px; /* Ensure a minimum height */
-  border: 2px solid rgba(255, 193, 7, 0.3);
-  border-radius: 10px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
-  z-index: 10001; /* Slightly higher than overlay */
-  background-color: #ffffff; /* Ensure map background is white */
-}
-
-/* Optional: enhance popup contrast in fullscreen */
-.fullscreen-leaflet-map .leaflet-popup-content-wrapper {
-  background: rgba(20, 25, 40, 0.98);
-}
-
-/* --- NEW STYLES FOR MAIN MAP CONTROLS --- */
-.map-header-with-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 10px;
-}
-
-.fullscreen-toggle-btn {
-  background: linear-gradient(135deg, #007bff, #0056b3);
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 1.2em;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.fullscreen-toggle-btn:hover {
-  background: linear-gradient(135deg, #0056b3, #004085);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5);
-  transform: translateY(-2px);
-}
-
-.fullscreen-toggle-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(0, 123, 255, 0.3);
-}
-/* --- END NEW V1.5 FEATURE --- */

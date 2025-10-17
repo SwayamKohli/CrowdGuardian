@@ -28,7 +28,6 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const socketRef = useRef(null);
 
-  // Fetch initial data (metrics + choke points + alerts)
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -46,10 +45,8 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
         let metrics = await metricsRes.json();
         const choke = await chokeRes.json();
 
-        // Keep only entries with valid coordinates
         metrics = metrics.filter((m) => m.latitude != null && m.longitude != null);
 
-        // Take latest record per zone
         const latestPerZone = {};
         metrics.forEach((m) => {
           if (
@@ -76,7 +73,6 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // 🧭 Socket setup
   useEffect(() => {
     const socket = io('http://localhost:3000', { transports: ['websocket'] });
     socketRef.current = socket;
@@ -91,27 +87,26 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
 
     const handleEvacuationRoute = (data) => {
       console.log('🧭 Evacuation route received:', data);
-      setEvacuationRoutes((prev) => {
-        // ✅ Keep existing route if already present (don't overwrite)
-        if (prev[data.zone_id]) {
-          console.log(`Skipping update for ${data.zone_id}, already has route`);
-          return prev;
-        }
-        return { ...prev, [data.zone_id]: data };
-      });
+      setEvacuationRoutes((prev) => ({ ...prev, [data.zone_id]: data }));
+    };
+
+    // 🔥 Added: Handle evacuation errors for debugging
+    const handleEvacuationError = (data) => {
+      console.error('🚨 Evacuation route error for zone', data.zone_id, ':', data.error);
     };
 
     socket.on('risk_alert_generated', handleRiskAlert);
     socket.on('evacuation_route_calculated', handleEvacuationRoute);
+    socket.on('evacuation_error', handleEvacuationError); // 🔥
 
     return () => {
       socket.off('risk_alert_generated', handleRiskAlert);
       socket.off('evacuation_route_calculated', handleEvacuationRoute);
+      socket.off('evacuation_error', handleEvacuationError); // 🔥
       socket.close();
     };
   }, []);
 
-  // 🔧 Utility functions
   const getMarkerColor = (utilization, capacity) => {
     const pct = ((utilization || 0) / (capacity || 100)) * 100;
     if (pct > 80) return '#dc3545';
@@ -190,27 +185,20 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
 
       {/* 🧭 Evacuation Routes */}
       {Object.entries(evacuationRoutes).map(([zoneId, route]) => {
-        let coords = [];
-        try {
-          if (Array.isArray(route.path_coordinates)) {
-            coords = route.path_coordinates;
-          } else if (typeof route.path_coordinates === 'string') {
-            coords = JSON.parse(route.path_coordinates);
-          }
-        } catch (e) {
-          console.warn('⚠️ Invalid route coordinates for zone', zoneId);
-        }
+        const coords = Array.isArray(route.path_coordinates)
+          ? route.path_coordinates.map(([lat, lng]) => [parseFloat(lat), parseFloat(lng)])
+          : [];
 
-        coords = coords
-          .map((pair) => [parseFloat(pair[0]), parseFloat(pair[1])])
-          .filter((pair) => !isNaN(pair[0]) && !isNaN(pair[1]));
+        const validCoords = coords.filter(
+          (pair) => Array.isArray(pair) && pair.length === 2 && !isNaN(pair[0]) && !isNaN(pair[1])
+        );
 
-        if (!coords.length) return null;
+        if (validCoords.length < 2) return null;
 
         return (
           <Polyline
             key={`route-${zoneId}`}
-            positions={coords}
+            positions={validCoords}
             color={getEvacuationRouteColor(route.risk_level_that_triggered)}
             weight={5}
             opacity={0.8}

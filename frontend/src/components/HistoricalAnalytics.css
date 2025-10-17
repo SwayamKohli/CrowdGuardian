@@ -77,6 +77,8 @@
   color: #cbd5e1;
   font-size: 1.1em;
   padding: 40px 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .loading-message::before {
@@ -108,6 +110,27 @@
 @keyframes errorBounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
+}
+
+/* Real-time update indicator */
+.historical-analytics.updating {
+  position: relative;
+}
+
+.historical-analytics.updating::after {
+  content: '🔄';
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  font-size: 1.5em;
+  animation: spinUpdate 1s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(255, 193, 7, 0.8));
+  z-index: 1000;
+}
+
+@keyframes spinUpdate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Analytics Controls - Filter Interface */

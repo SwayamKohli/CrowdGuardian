@@ -131,7 +131,7 @@ app.post('/api/calculate-evacuation-route', async (req, res) => {
 // AUTOMATIC RISK PREDICTION LOGIC
 // ----------------------------------------------------------------------
 const SAFE_ZONE_COORDINATES = { lat: 28.6050, lng: 77.2000 };
-const EVACUATION_TRIGGER_LEVELS = ['High', 'Critical'];
+const EVACUATION_TRIGGER_LEVELS = ['Medium', 'High', 'Critical'];
 
 const ZONE_COORDINATE_MAPPING = {
   'Z01_CP': { lat: 28.6316, lng: 77.2180 },
@@ -236,25 +236,30 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
           io.emit('evacuation_error', { error: evacErrorData, zone_id: zoneId });
           return;
         }
-        try {
-          const evacResult = JSON.parse(evacOutputData.trim());
-          if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
-            throw new Error(evacResult.message || 'Unexpected result structure');
-          }
-          io.emit('evacuation_route_calculated', {
-            type: 'EVACUATION_ROUTE_CALCULATED',
-            zone_id: zoneId,
-            risk_level_that_triggered: predictionResult,
-            path_coordinates: JSON.stringify(evacResult.route_coordinates),
-            distance_kms: evacResult.distance_kms,
-            start_point: evacResult.start_point,
-            end_point: evacResult.end_point,
-            calculated_at: new Date().toISOString()
-          });
-        } catch (err) {
-          console.error('Error parsing evacuation route result:', err.message);
-          io.emit('evacuation_error', { error: err.message, zone_id: zoneId });
+        // Inside evacProcess.on('close', (evacCode) => { ... })
+      try {
+        const evacResult = JSON.parse(evacOutputData.trim());
+        if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
+          throw new Error(evacResult.message || 'Unexpected result structure');
         }
+
+        // 🔥 ADD THIS LOG
+        console.log(`✅ Evacuation route SUCCESS for zone ${zoneId}. Emitting to frontend...`);
+
+        io.emit('evacuation_route_calculated', {
+          type: 'EVACUATION_ROUTE_CALCULATED',
+          zone_id: zoneId,
+          risk_level_that_triggered: predictionResult,
+          path_coordinates: evacResult.route_coordinates, // raw array
+          distance_kms: evacResult.distance_kms,
+          start_point: evacResult.start_point,
+          end_point: evacResult.end_point,
+          calculated_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Error parsing evacuation route result:', err.message);
+        io.emit('evacuation_error', { error: err.message, zone_id: zoneId });
+      }
       });
     }
   });
@@ -343,7 +348,7 @@ async function simulateLiveCrowdData() {
         zone.choke_point_id,
         coord.lat,
         coord.lng,
-        `${zone.zone_id} Simulated Update`
+        `${zone.zone_id} Updated`
       ]);
     }
 
@@ -369,8 +374,8 @@ async function simulateLiveCrowdData() {
   }
 }
 
-// Schedule simulation every 3 seconds
-const simulationInterval = setInterval(simulateLiveCrowdData, 3000);
+// Schedule simulation every 60 seconds
+const simulationInterval = setInterval(simulateLiveCrowdData, 60000); // 60 sec
 
 // ----------------------------------------------------------------------
 // INTERVALS & SOCKET EVENTS
