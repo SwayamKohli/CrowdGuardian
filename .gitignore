@@ -143,3 +143,5 @@ vite.config.ts.timestamp-*
 backend/cache/
 backend/python_scripts/cache/
 backend/venv/
+*.docx
+CrowdGuardian Poster Rough.docx
