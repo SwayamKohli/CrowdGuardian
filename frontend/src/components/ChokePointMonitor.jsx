@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import './ChokePointMonitor.css';
 import { io } from 'socket.io-client';
@@ -14,8 +15,8 @@ const ChokePointMonitor = () => {
   const fetchData = async () => {
     try {
       const [cpRes, zmRes] = await Promise.all([
-        fetch('http://localhost:3456/api/choke-points'),
-        fetch('http://localhost:3456/api/zone-metrics?limit=100')
+        fetch(`${API_URL}/api/choke-points`),
+        fetch(`${API_URL}/api/zone-metrics?limit=100`)
       ]);
 
       if (!cpRes.ok || !zmRes.ok) throw new Error('Failed to fetch data');
@@ -48,7 +49,7 @@ const ChokePointMonitor = () => {
 
     const interval = setInterval(fetchData, 30000); // fallback polling every 30s
 
-    const socket = io('http://localhost:3456', { transports: ['websocket'] });
+    const socket = io(API_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
     // Real-time zone metrics update

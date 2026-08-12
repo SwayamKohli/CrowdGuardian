@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -32,9 +33,9 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
     const fetchData = async () => {
       try {
         const [alertsRes, metricsRes, chokeRes] = await Promise.all([
-          fetch('http://localhost:3456/api/alerts?limit=20'),
-          fetch('http://localhost:3456/api/zone-metrics?limit=200'),
-          fetch('http://localhost:3456/api/choke-points'),
+          fetch(`${API_URL}/api/alerts?limit=20`),
+          fetch(`${API_URL}/api/zone-metrics?limit=200`),
+          fetch(`${API_URL}/api/choke-points`),
         ]);
 
         if (!alertsRes.ok || !metricsRes.ok || !chokeRes.ok) {
@@ -84,7 +85,7 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
   }, []);
 
   useEffect(() => {
-    const socket = io('http://localhost:3456', { transports: ['websocket'] });
+    const socket = io(API_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
     const handleRiskAlert = (newAlert) => {

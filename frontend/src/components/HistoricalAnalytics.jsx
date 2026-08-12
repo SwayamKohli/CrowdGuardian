@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Chart as ChartJS,
@@ -41,7 +42,7 @@ const HistoricalAnalytics = () => {
       // Only show loading spinner on initial load
       if (!initialLoadDone.current) setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3456/api/historical-data?limit=100');
+      const response = await fetch(`${API_URL}/api/historical-data?limit=100`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       setHistoricalData(data);
@@ -61,7 +62,7 @@ const HistoricalAnalytics = () => {
     const interval = setInterval(fetchHistoricalData, 60000); // Poll every 60s instead of 3s
 
     // Socket for real-time incidents
-    const socket = io('http://localhost:3456', { transports: ['websocket'] });
+    const socket = io(API_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
     // Listen for new incidents (if your backend emits them)

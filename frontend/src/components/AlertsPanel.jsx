@@ -1,3 +1,4 @@
+import { API_URL } from '../config';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
@@ -39,7 +40,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
       // Only show loading spinner on initial load, not on subsequent polls
       if (!initialLoadDone.current) setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3456/api/alerts?limit=50');
+      const response = await fetch(`${API_URL}/api/alerts?limit=50`);
       if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
       const data = await response.json();
       // Merge DB data with any socket-pushed alerts to avoid losing real-time data
@@ -67,7 +68,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 30000);
 
-    const socket = io('http://localhost:3456', { transports: ['websocket'] });
+    const socket = io(API_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.on('risk_alert_generated', (newAlert) => {

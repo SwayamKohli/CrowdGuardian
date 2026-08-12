@@ -17,13 +17,22 @@ pg.types.setTypeParser(1114, function(stringValue) {
 });
 
 // Initialize PostgreSQL connection pool
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'crowdguardian',
-  user: process.env.DB_USER || 'cg_user',
-  password: process.env.DB_PASSWORD || 'your_strong_app_password',
-});
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: {
+          rejectUnauthorized: false,
+        },
+      }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 5432,
+        database: process.env.DB_NAME || 'crowdguardian',
+        user: process.env.DB_USER || 'cg_user',
+        password: process.env.DB_PASSWORD || 'your_strong_app_password',
+      }
+);
 
 // Verify DB connection
 pool.query('SELECT NOW()', (err, res) => {
