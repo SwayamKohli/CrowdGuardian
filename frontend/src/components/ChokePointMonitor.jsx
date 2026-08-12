@@ -14,8 +14,8 @@ const ChokePointMonitor = () => {
   const fetchData = async () => {
     try {
       const [cpRes, zmRes] = await Promise.all([
-        fetch('http://localhost:3000/api/choke-points'),
-        fetch('http://localhost:3000/api/zone-metrics?limit=100')
+        fetch('http://localhost:3456/api/choke-points'),
+        fetch('http://localhost:3456/api/zone-metrics?limit=100')
       ]);
 
       if (!cpRes.ok || !zmRes.ok) throw new Error('Failed to fetch data');
@@ -46,9 +46,9 @@ const ChokePointMonitor = () => {
   useEffect(() => {
     fetchData();
 
-    const interval = setInterval(fetchData, 5000); // fallback polling
+    const interval = setInterval(fetchData, 30000); // fallback polling every 30s
 
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io('http://localhost:3456', { transports: ['websocket'] });
     socketRef.current = socket;
 
     // Real-time zone metrics update

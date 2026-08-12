@@ -5,7 +5,16 @@ const cors = require('cors');
 const { spawn } = require('child_process');
 require('dotenv').config();
 
-const { Pool } = require('pg');
+const path = require('path');
+const PYTHON_PATH = path.join(__dirname, 'venv', 'bin', 'python');
+
+const pg = require('pg');
+const { Pool } = pg;
+
+// Force pg client to parse TIMESTAMP (without time zone) columns as UTC
+pg.types.setTypeParser(1114, function(stringValue) {
+  return stringValue ? new Date(stringValue.replace(' ', 'T') + 'Z') : null;
+});
 
 // Initialize PostgreSQL connection pool
 const pool = new Pool({
@@ -23,7 +32,7 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3456;
 
 app.use(cors());
 app.use(express.json());
@@ -50,7 +59,7 @@ app.use('/api/evacuation-routes', createEvacuationRoutesRouter(pool));
 
 function runPythonPrediction(scriptPath, inputData, callback) {
   const inputJsonString = JSON.stringify(inputData);
-  const pythonProcess = spawn('python', [scriptPath, inputJsonString]);
+  const pythonProcess = spawn(PYTHON_PATH, [scriptPath, inputJsonString]);
 
   let outputData = '';
   let errorData = '';
@@ -105,7 +114,7 @@ app.post('/api/calculate-evacuation-route', async (req, res) => {
 
   const pythonScriptPath = './python_scripts/calculate_evacuation_route.py';
   const args = [pythonScriptPath, numericStartLat.toString(), numericStartLng.toString(), numericEndLat.toString(), numericEndLng.toString(), city_name];
-  const pythonProcess = spawn('python', args);
+  const pythonProcess = spawn(PYTHON_PATH, args);
 
   let outputData = '', errorData = '';
   pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
@@ -225,7 +234,7 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
         "New Delhi, India"
       ];
 
-      const evacProcess = spawn('python', evacArgs);
+      const evacProcess = spawn(PYTHON_PATH, evacArgs);
       let evacOutputData = '', evacErrorData = '';
       evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
       evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
@@ -281,7 +290,12 @@ async function runAutomaticRiskPrediction() {
       metricsByZone[row.zone_id].push(row);
     });
 
-    for (const zoneId of Object.keys(metricsByZone)) {
+    // Process only 5 random zones per cycle to prevent CPU overload
+    const allZoneIds = Object.keys(metricsByZone);
+    const shuffled = allZoneIds.sort(() => 0.5 - Math.random());
+    const zonesToProcess = shuffled.slice(0, 5);
+    console.log(`Processing ${zonesToProcess.length}/${allZoneIds.length} zones this cycle:`, zonesToProcess.join(', '));
+    for (const zoneId of zonesToProcess) {
       processZoneRisk(zoneId, metricsByZone[zoneId]);
     }
   } catch (err) {
@@ -293,7 +307,7 @@ async function runAutomaticRiskPrediction() {
 // SERVER & SOCKET.IO SETUP
 // ----------------------------------------------------------------------
 const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: "http://localhost:5173", methods: ["GET","POST"] } });
+const io = socketIo(server, { cors: { origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"], methods: ["GET","POST"] } });
 
 async function emitLatestZoneMetrics() {
   try {
@@ -323,7 +337,14 @@ async function simulateLiveCrowdData() {
     const zoneResult = await pool.query('SELECT DISTINCT zone_id, choke_point_id FROM zone_metrics');
     const chokeResult = await pool.query('SELECT id, capacity FROM choke_points');
 
-    const zones = zoneResult.rows;
+    let zones = zoneResult.rows;
+    if (zones.length === 0) {
+      zones = Object.keys(ZONE_COORDINATE_MAPPING).map(zoneId => {
+        const numPart = zoneId.substring(1, 3);
+        const cpId = parseInt(numPart, 10);
+        return { zone_id: zoneId, choke_point_id: cpId };
+      });
+    }
     const chokePoints = chokeResult.rows;
 
     for (const zone of zones) {
@@ -366,6 +387,18 @@ async function simulateLiveCrowdData() {
 
     console.log('Simulated live crowd data updated');
 
+    // Cleanup: Keep only the latest 500 rows per zone to prevent DB bloat
+    await pool.query(`
+      DELETE FROM zone_metrics
+      WHERE id NOT IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY zone_id ORDER BY timestamp DESC) as rn
+          FROM zone_metrics
+        ) ranked WHERE rn <= 25
+      )
+    `);
+    console.log('Old zone_metrics data cleaned up');
+
     // Emit updated data to frontend
     await emitLatestZoneMetrics();
 
@@ -374,14 +407,23 @@ async function simulateLiveCrowdData() {
   }
 }
 
-// Schedule simulation every 60 seconds
-const simulationInterval = setInterval(simulateLiveCrowdData, 60000); // 60 sec
+// Run once on startup to seed initial data, then schedule intervals
+simulateLiveCrowdData().then(() => {
+  console.log('Initial data simulation completed on startup.');
+  runAutomaticRiskPrediction();
+  emitLatestZoneMetrics();
+}).catch(err => {
+  console.error('Error during initial startup data simulation:', err);
+});
+
+// Schedule simulation every 120 seconds
+const simulationInterval = setInterval(simulateLiveCrowdData, 120000); // 120 sec
 
 // ----------------------------------------------------------------------
 // INTERVALS & SOCKET EVENTS
 // ----------------------------------------------------------------------
-const predictionInterval = setInterval(runAutomaticRiskPrediction, 10000);
-const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 5000);
+const predictionInterval = setInterval(runAutomaticRiskPrediction, 60000);
+const metricsEmissionInterval = setInterval(emitLatestZoneMetrics, 15000);
 
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);

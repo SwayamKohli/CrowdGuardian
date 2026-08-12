@@ -33,22 +33,24 @@ const HistoricalAnalytics = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const socketRef = useRef(null);
+  const initialLoadDone = useRef(false);
 
   // Fetch historical data
   const fetchHistoricalData = async () => {
     try {
-      setLoading(true);
+      // Only show loading spinner on initial load
+      if (!initialLoadDone.current) setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/api/historical-data?limit=100');
+      const response = await fetch('http://localhost:3456/api/historical-data?limit=100');
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       setHistoricalData(data);
     } catch (err) {
       console.error('Error fetching historical data:', err);
       setError(err.message);
-      setHistoricalData([]);
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -56,10 +58,10 @@ const HistoricalAnalytics = () => {
     fetchHistoricalData();
 
     // Polling fallback (optional)
-    const interval = setInterval(fetchHistoricalData, 3000);
+    const interval = setInterval(fetchHistoricalData, 60000); // Poll every 60s instead of 3s
 
     // Socket for real-time incidents
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io('http://localhost:3456', { transports: ['websocket'] });
     socketRef.current = socket;
 
     // Listen for new incidents (if your backend emits them)

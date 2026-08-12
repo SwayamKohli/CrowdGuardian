@@ -32,9 +32,9 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
     const fetchData = async () => {
       try {
         const [alertsRes, metricsRes, chokeRes] = await Promise.all([
-          fetch('http://localhost:3000/api/alerts?limit=20'),
-          fetch('http://localhost:3000/api/zone-metrics?limit=200'),
-          fetch('http://localhost:3000/api/choke-points'),
+          fetch('http://localhost:3456/api/alerts?limit=20'),
+          fetch('http://localhost:3456/api/zone-metrics?limit=200'),
+          fetch('http://localhost:3456/api/choke-points'),
         ]);
 
         if (!alertsRes.ok || !metricsRes.ok || !chokeRes.ok) {
@@ -57,7 +57,17 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
           }
         });
 
-        setRiskAlerts(alerts);
+        // Merge DB alerts with existing socket-pushed alerts
+        setRiskAlerts(prev => {
+          const merged = [...alerts];
+          prev.forEach(existing => {
+            if (!merged.some(a => a.id === existing.id)) {
+              merged.push(existing);
+            }
+          });
+          merged.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
+          return merged.slice(0, 20);
+        });
         setZoneMetrics(Object.values(latestPerZone));
         setChokePoints(choke);
       } catch (err) {
@@ -69,12 +79,12 @@ const MapView = ({ selectedZoneId, setSelectedZoneId }) => {
     };
 
     fetchData();
-    const intervalId = setInterval(fetchData, 10000);
+    const intervalId = setInterval(fetchData, 30000); // Poll every 30s, Socket.IO handles real-time
     return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io('http://localhost:3456', { transports: ['websocket'] });
     socketRef.current = socket;
 
     const handleRiskAlert = (newAlert) => {

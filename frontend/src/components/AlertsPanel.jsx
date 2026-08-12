@@ -32,21 +32,34 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const socketRef = useRef(null);
+  const initialLoadDone = useRef(false);
 
   const fetchAlerts = async () => {
     try {
-      setLoading(true);
+      // Only show loading spinner on initial load, not on subsequent polls
+      if (!initialLoadDone.current) setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/api/alerts?limit=50');
+      const response = await fetch('http://localhost:3456/api/alerts?limit=50');
       if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
       const data = await response.json();
-      setAlerts(data);
+      // Merge DB data with any socket-pushed alerts to avoid losing real-time data
+      setAlerts(prev => {
+        if (!initialLoadDone.current) return data;
+        const merged = [...data];
+        prev.forEach(existing => {
+          if (!merged.some(a => a.id === existing.id)) {
+            merged.push(existing);
+          }
+        });
+        merged.sort((a, b) => new Date(b.generated_at) - new Date(a.generated_at));
+        return merged.slice(0, 50);
+      });
     } catch (err) {
       console.error('Error fetching alerts:', err);
       setError(err.message);
-      setAlerts([]);
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -54,7 +67,7 @@ const AlertsPanel = ({ selectedZoneId: externalSelectedZoneId, setSelectedZoneId
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 30000);
 
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io('http://localhost:3456', { transports: ['websocket'] });
     socketRef.current = socket;
 
     socket.on('risk_alert_generated', (newAlert) => {

@@ -142,3 +142,4 @@ vite.config.ts.timestamp-*
 .DS_Store
 backend/cache/
 backend/python_scripts/cache/
+backend/venv/

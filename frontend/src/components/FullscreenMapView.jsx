@@ -61,7 +61,7 @@ const FullscreenMapView = ({ selectedZoneId, setSelectedZoneId, persistentSocket
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('http://localhost:3000/api/choke-points');
+        const response = await fetch('http://localhost:3456/api/choke-points');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -86,7 +86,7 @@ const FullscreenMapView = ({ selectedZoneId, setSelectedZoneId, persistentSocket
 
     if (!socketRef.current) {
       console.log("FullscreenMapView: Creating new Socket.IO client...");
-      const newSocket = io('http://localhost:3000');
+      const newSocket = io('http://localhost:3456');
 
       socketRef.current = newSocket;
 
