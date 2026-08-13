@@ -145,3 +145,5 @@ backend/python_scripts/cache/
 backend/venv/
 *.docx
 CrowdGuardian Poster Rough.docx
+cache/
+/cache/
