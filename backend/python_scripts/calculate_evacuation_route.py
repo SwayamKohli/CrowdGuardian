@@ -5,10 +5,10 @@ import sys
 
 def calculate_route(start_lat, start_lng, end_lat, end_lng, city_name="Delhi, India"):
     try:
-        # 🔧 Increased radius to 5000 meters to cover both start and safe zone
+        # 🔧 Set radius to 2500 meters to cover walking paths while respecting 512MB RAM limits
         G = ox.graph_from_point(
             (start_lat, start_lng), 
-            dist=5000,  # Was 1500 → now 5000
+            dist=2500,
             network_type="walk"
         )
         

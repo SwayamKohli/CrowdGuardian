@@ -173,6 +173,73 @@ const ZONE_COORDINATE_MAPPING = {
   'Z19_DK': { lat: 28.5900, lng: 77.1400 },
   'Z20_DU': { lat: 28.6872, lng: 77.2084 },
 };
+// Evacuation Route Calculation Queue to prevent OOM errors on Render free tier (512MB RAM)
+const evacQueue = [];
+let evacQueueRunning = false;
+
+async function processEvacQueue() {
+  if (evacQueueRunning || evacQueue.length === 0) return;
+  evacQueueRunning = true;
+
+  const { zoneId, startCoord, predictionResult } = evacQueue.shift();
+
+  try {
+    await new Promise((resolve) => {
+      console.log(`[Queue] Starting evacuation route calculation for zone ${zoneId}...`);
+      const evacArgs = [
+        './python_scripts/calculate_evacuation_route.py',
+        startCoord.lat.toString(),
+        startCoord.lng.toString(),
+        SAFE_ZONE_COORDINATES.lat.toString(),
+        SAFE_ZONE_COORDINATES.lng.toString(),
+        "New Delhi, India"
+      ];
+
+      const evacProcess = spawn(PYTHON_PATH, evacArgs);
+      let evacOutputData = '', evacErrorData = '';
+      
+      evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
+      evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
+
+      evacProcess.on('close', (evacCode) => {
+        try {
+          if (evacCode !== 0) {
+            console.error(`Evacuation route calculation failed for zone ${zoneId}: ${evacErrorData}`);
+            io.emit('evacuation_error', { error: evacErrorData, zone_id: zoneId });
+          } else {
+            const evacResult = JSON.parse(evacOutputData.trim());
+            if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
+              throw new Error(evacResult.message || 'Unexpected result structure');
+            }
+
+            console.log(`✅ Evacuation route SUCCESS for zone ${zoneId}. Emitting to frontend...`);
+
+            io.emit('evacuation_route_calculated', {
+              type: 'EVACUATION_ROUTE_CALCULATED',
+              zone_id: zoneId,
+              risk_level_that_triggered: predictionResult,
+              path_coordinates: evacResult.route_coordinates,
+              distance_kms: evacResult.distance_kms,
+              start_point: evacResult.start_point,
+              end_point: evacResult.end_point,
+              calculated_at: new Date().toISOString()
+            });
+          }
+        } catch (err) {
+          console.error(`Error parsing evacuation route result for zone ${zoneId}:`, err.message);
+          io.emit('evacuation_error', { error: err.message, zone_id: zoneId });
+        } finally {
+          resolve();
+        }
+      });
+    });
+  } catch (err) {
+    console.error(`Error in queue processing for zone ${zoneId}:`, err);
+  } finally {
+    evacQueueRunning = false;
+    setTimeout(processEvacQueue, 1500);
+  }
+}
 
 const processZoneRisk = async (zoneId, zoneMetrics) => {
   const latestMetric = zoneMetrics[0];
@@ -227,58 +294,15 @@ const processZoneRisk = async (zoneId, zoneMetrics) => {
     io.emit('risk_alert_generated', alertData);
 
     if (EVACUATION_TRIGGER_LEVELS.includes(predictionResult)) {
-      console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Triggering route calculation...`);
+      console.log(`Automatic Evacuation: High risk detected in zone ${zoneId}. Queueing route calculation...`);
       const startCoord = ZONE_COORDINATE_MAPPING[zoneId];
       if (!startCoord) {
         console.log(`No mapped start coordinates for zone ${zoneId}. Skipping route calculation.`);
         return;
       }
 
-      const evacArgs = [
-        './python_scripts/calculate_evacuation_route.py',
-        startCoord.lat.toString(),
-        startCoord.lng.toString(),
-        SAFE_ZONE_COORDINATES.lat.toString(),
-        SAFE_ZONE_COORDINATES.lng.toString(),
-        "New Delhi, India"
-      ];
-
-      const evacProcess = spawn(PYTHON_PATH, evacArgs);
-      let evacOutputData = '', evacErrorData = '';
-      evacProcess.stdout.on('data', (data) => { evacOutputData += data.toString(); });
-      evacProcess.stderr.on('data', (data) => { evacErrorData += data.toString(); });
-
-      evacProcess.on('close', (evacCode) => {
-        if (evacCode !== 0) {
-          console.error(`Evacuation route calculation failed for zone ${zoneId}: ${evacErrorData}`);
-          io.emit('evacuation_error', { error: evacErrorData, zone_id: zoneId });
-          return;
-        }
-        // Inside evacProcess.on('close', (evacCode) => { ... })
-      try {
-        const evacResult = JSON.parse(evacOutputData.trim());
-        if (evacResult.status !== 'success' || !Array.isArray(evacResult.route_coordinates)) {
-          throw new Error(evacResult.message || 'Unexpected result structure');
-        }
-
-        // 🔥 ADD THIS LOG
-        console.log(`✅ Evacuation route SUCCESS for zone ${zoneId}. Emitting to frontend...`);
-
-        io.emit('evacuation_route_calculated', {
-          type: 'EVACUATION_ROUTE_CALCULATED',
-          zone_id: zoneId,
-          risk_level_that_triggered: predictionResult,
-          path_coordinates: evacResult.route_coordinates, // raw array
-          distance_kms: evacResult.distance_kms,
-          start_point: evacResult.start_point,
-          end_point: evacResult.end_point,
-          calculated_at: new Date().toISOString()
-        });
-      } catch (err) {
-        console.error('Error parsing evacuation route result:', err.message);
-        io.emit('evacuation_error', { error: err.message, zone_id: zoneId });
-      }
-      });
+      evacQueue.push({ zoneId, startCoord, predictionResult });
+      processEvacQueue();
     }
   });
 };
